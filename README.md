@@ -1,9 +1,9 @@
-# **MSc-Thesis:** On the simulation of GIT-Templates for BSc-Theses
-**Author:** *Benedikt Ehinger*
+# **Research project:** Project title
+**Author:** *Maanik Marathe*
 
-**Supervisor(s):** *Supervisor 1*, *Supervisor 2*
+**Supervisor(s):** *Jun.-Prof. Dr. rer. nat. Benedikt Ehinger, Judith Schepers, M.Sc.*
 
-**Year:** *2022*
+**Year:** *2024*
 
 ## Project Description
 >provide a short description of the main goals - just copy from the proposal
