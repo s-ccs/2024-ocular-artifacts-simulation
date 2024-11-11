@@ -29,6 +29,11 @@ begin
 	using TopoPlots
 end
 
+# ╔═╡ 535a3124-0658-4e3b-8245-3c023c0e5f1d
+begin
+	using Statistics
+end
+
 # ╔═╡ 51a1deaf-1ff1-4aa5-a26e-84c0b608544c
 begin
 	# dlpath = download("https://github.com/harmening/HArtMuT/raw/main/HArtMuTmodels/HArtMuT_NYhead_small.mat")
@@ -104,16 +109,23 @@ end
 # ╔═╡ 5b85e5e3-13c4-4584-982e-044984d37ea0
 begin
 	# scroll through to select whichever artefact label you want to plot
-	@bind x NumberField(1:62) # can't use labels.length - some kind of dependency error between cells
+	element = @bind x NumberField(1:62) # can't use labels.length - some kind of dependency error between cells
 end
 
 # ╔═╡ 3e3d9d93-30ee-48e0-854f-4d55cabd2ce9
 begin
 	artefactlabels = unique(hartmut.artefactual["label"])
 	f2 = WGLMakie.scatter(model["pos"], alpha=0.2, color="grey");
+	#center of left and right eyeballs 
+	eyeleft_positions = [ model["pos"][findall(k->occursin("EyeCornea_left_",k), m["label"][:]),:] ; model["pos"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_left",k), m["label"][:]),:] ]
+	eyeright_positions = [ model["pos"][findall(k->occursin("EyeCornea_right_",k), m["label"][:]),:] ; model["pos"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_right",k), m["label"][:]),:] ]
+	eyeright_center = Statistics.mean(eyeright_positions,dims=1)
+	# not calculating for left eye since the label contains leftright points as well 
+	WGLMakie.scatter!(eyeright_positions) 
+	WGLMakie.scatter!(eyeright_center)
 	#WGLMakie.scatter!(Point(model["pos"][200]))
-	# WGLMakie.scatter!(model["pos"][findall(k->occursin(artefactlabels[x],k),m["label"][:]),:]);
-	artefactlabels[x]
+	WGLMakie.scatter!(model["pos"][findall(k->occursin(artefactlabels[x],k),m["label"][:]),:]);
+	# artefactlabels[x]
 end
 
 # ╔═╡ 91788d6d-69f1-428a-8db7-2f53be674bf9
@@ -187,6 +199,7 @@ begin
 	# mydata = sum(model_magnitude[:,ii] for ii in labelsourceindices["leftright"])
 	
 	mydata = sum(model_magnitude[:,ii] for ii in labelsourceindices["Cornea"])
+	# mydata = sum(model_magnitude[:,ii] for ii in labelsourceindices[k]) for k in keys(labelsourceindices)
 end
 
 # ╔═╡ 37412158-83a3-48b2-9384-17c6886c9ea3
@@ -201,13 +214,13 @@ pos2d = [Point2f(p[1] + 0.5, p[2] + 0.5) for p in pos2d];
 end
 
 # ╔═╡ 45de688b-9495-4b3e-8308-d17887385562
-plot_topoplot(mydata, positions=pos2d)
+mytopoplot = plot_topoplot(mydata, positions=pos2d)
 
 # ╔═╡ d511f3de-be25-4c33-91e7-7af1b21b1eda
-begin
-dat, positions = TopoPlots.example_data();
-plot_topoplot(dat[1:4, 340, 1]; positions = positions[1:4])
-end
+# begin
+# dat, positions = TopoPlots.example_data();
+# plot_topoplot(dat[1:4, 340, 1]; positions = positions[1:4])
+# end
 
 # ╔═╡ 9bc8b00e-7af6-414b-90d6-5d585afdb1e4
 begin
@@ -215,10 +228,22 @@ begin
 	# dat[1:4,340,1]
 end
 
-# ╔═╡ e2d27160-21c8-4689-8728-4811b432d135
+# ╔═╡ 3c0b48f9-d765-431d-ac74-7e2574a2c1dd
+Plots.plot(f,f2,mytopoplot,layout=(1,3))
+
+# ╔═╡ 4ec1747e-7851-4708-9492-6b48c235ee86
 begin
-	positions
-	pos2d
+	fig = Figure()
+	ga = fig[1, 1] = GridLayout()
+	gb = fig[1, 2] = GridLayout()
+	gc = fig[2, 1] = GridLayout()
+	gd = fig[2, 2] = GridLayout()
+end
+
+
+# ╔═╡ 5d962bc5-939d-424f-87ce-d51ecc12be85
+begin
+	plot_topoplot!(ga, LinearAlgebra.convert(Vector{Float32},mydata); positions=pos2d)
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -229,6 +254,7 @@ MAT = "23992714-dd62-5051-b70f-ba57cb901cac"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 TopoPlots = "2bdbdf9c-dbd8-403f-947b-1a4e0dd41a7a"
 UnfoldMakie = "69a5ce3b-64fb-4f22-ae69-36dd4416af2a"
 UnfoldSim = "ed8ae6d2-84d3-44c6-ab46-0baf21700804"
@@ -251,7 +277,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.0"
 manifest_format = "2.0"
-project_hash = "76a48f90b84166f135cb939f93464eb35dc4ef59"
+project_hash = "474bcbdd3a898bd2fcddc440175f0866e0aa04ad"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -2952,6 +2978,7 @@ version = "1.4.1+1"
 
 # ╔═╡ Cell order:
 # ╠═58cfd854-4f0c-11ee-33d6-71433b23db47
+# ╠═535a3124-0658-4e3b-8245-3c023c0e5f1d
 # ╠═51a1deaf-1ff1-4aa5-a26e-84c0b608544c
 # ╠═88200566-3286-458d-b6fd-b3b198d0895e
 # ╠═6d24eb05-61c7-40df-8c2e-05fa2d1f28ef
@@ -2975,6 +3002,8 @@ version = "1.4.1+1"
 # ╠═45de688b-9495-4b3e-8308-d17887385562
 # ╠═d511f3de-be25-4c33-91e7-7af1b21b1eda
 # ╠═9bc8b00e-7af6-414b-90d6-5d585afdb1e4
-# ╠═e2d27160-21c8-4689-8728-4811b432d135
+# ╠═3c0b48f9-d765-431d-ac74-7e2574a2c1dd
+# ╠═4ec1747e-7851-4708-9492-6b48c235ee86
+# ╠═5d962bc5-939d-424f-87ce-d51ecc12be85
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
