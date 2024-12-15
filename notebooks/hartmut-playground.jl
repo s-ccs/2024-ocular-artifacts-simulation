@@ -18,7 +18,7 @@ end
 
 # ╔═╡ 58cfd854-4f0c-11ee-33d6-71433b23db47
 begin
-	using Plots
+	# using Plots
 	using WGLMakie
 	using MAT
 	using StableRNGs
@@ -46,52 +46,53 @@ begin
 	# close(file);
 	# model1 = hartmut1["artefactmodel"]
 	# model = hartmut1["cortexmodel"]
+	
 end
 
 # ╔═╡ 398cf988-b75d-45b4-b8c8-6bb2342682d0
 begin
 	function read_new_hartmut(;p = "HArtMuT_NYhead_large_fibers.mat")
-file = matopen(p);
-hartmut = read(file, "HArtMuT");
-close(file)
-
-fname = tempname(); # temporary file
-
-fid = h5open(fname, "w") 
-
-
-label = string.(hartmut["electrodes"]["label"][:, 1])
-chanpos = Float64.(hartmut["electrodes"]["chanpos"])
-
-cort_label = string.(hartmut["cortexmodel"]["labels"][:, 1])
-cort_orient = hartmut["cortexmodel"]["orientation"]
-cort_leadfield = hartmut["cortexmodel"]["leadfield"]
-cort_pos = hartmut["cortexmodel"]["pos"]
-
-
-art_label = string.(hartmut["artefactmodel"]["labels"][:, 1])
-art_orient = hartmut["artefactmodel"]["orientation"]
-art_leadfield = hartmut["artefactmodel"]["leadfield"]
-art_pos = hartmut["artefactmodel"]["pos"]
-
-e = create_group(fid, "electrodes")
-e["label"] = label
-e["pos"] = chanpos
-c = create_group(fid, "cortical")
-c["label"] = cort_label
-c["orientation"] = cort_orient
-c["leadfield"] = cort_leadfield
-c["pos"] = cort_pos
-a = create_group(fid, "artefacts")
-a["label"] = art_label
-a["orientation"] = art_orient
-a["leadfield"] = art_leadfield
-a["pos"] = art_pos
-	a["fiber"] = Int.(hartmut["artefactmodel"]["fiber"][1,:])
-a["dist_from_muscle_center"] = hartmut["artefactmodel"]["dist_from_muscle_center"][1,:]
-close(fid)
-
-#-- read it back in (illogical, I know ;)
+		file = matopen(p);
+		hartmut = read(file, "HArtMuT");
+		close(file)
+		
+		fname = tempname(); # temporary file
+		
+		fid = h5open(fname, "w") 
+		
+		
+		label = string.(hartmut["electrodes"]["label"][:, 1])
+		chanpos = Float64.(hartmut["electrodes"]["chanpos"])
+		
+		cort_label = string.(hartmut["cortexmodel"]["labels"][:, 1])
+		cort_orient = hartmut["cortexmodel"]["orientation"]
+		cort_leadfield = hartmut["cortexmodel"]["leadfield"]
+		cort_pos = hartmut["cortexmodel"]["pos"]
+		
+		
+		art_label = string.(hartmut["artefactmodel"]["labels"][:, 1])
+		art_orient = hartmut["artefactmodel"]["orientation"]
+		art_leadfield = hartmut["artefactmodel"]["leadfield"]
+		art_pos = hartmut["artefactmodel"]["pos"]
+		
+		e = create_group(fid, "electrodes")
+		e["label"] = label
+		e["pos"] = chanpos
+		c = create_group(fid, "cortical")
+		c["label"] = cort_label
+		c["orientation"] = cort_orient
+		c["leadfield"] = cort_leadfield
+		c["pos"] = cort_pos
+		a = create_group(fid, "artefacts")
+		a["label"] = art_label
+		a["orientation"] = art_orient
+		a["leadfield"] = art_leadfield
+		a["pos"] = art_pos
+			a["fiber"] = Int.(hartmut["artefactmodel"]["fiber"][1,:])
+		a["dist_from_muscle_center"] = hartmut["artefactmodel"]["dist_from_muscle_center"][1,:]
+		close(fid)
+		
+		#-- read it back in (illogical, I know ;)
         h = h5open(fname)
 
 
@@ -117,21 +118,29 @@ close(fid)
             h["cortical"] |> read |> sel_chan,
             h["electrodes"] |> read |> sel_chan,
         )
-return headmodel
+		return headmodel
+	end
+
+	function hart_indices_from_labels(headmodel,labels=["dummy"])
+		labelsourceindices = Dict()
+		for l in labels
+			labelsourceindices[l] = findall(k->occursin(l,k),headmodel["label"][:])
+		end
+		return labelsourceindices
 	end
 end
 
 # ╔═╡ 2fde0e5e-7543-4149-bf74-9b65573cc462
 begin
-	hart = read_new_hartmut()
-end
-
-# ╔═╡ 88200566-3286-458d-b6fd-b3b198d0895e
-begin
-	# hartmut = UnfoldSim.headmodel()
-	hartmut = hart
-	m = hartmut.artefactual
-	model = m; ""
+	# import large and small hartmut models
+	hart_large = read_new_hartmut()
+	model_large = hart_large.artefactual
+	hartmut = UnfoldSim.headmodel()
+	model_small = hartmut.artefactual
+	
+	# we can select which version we want to use
+	model = model_large
+	""
 end
 
 # ╔═╡ 6d24eb05-61c7-40df-8c2e-05fa2d1f28ef
@@ -162,31 +171,24 @@ begin
 	# NOTE the property name is 'labels' in the original hartmut but 'label' in the UnfoldSim hartmut headmodel.
 	labels = [	"dummy"
 				,"Cornea"
-				# ,"Ocul"
-				# ,"Eye"
 				,"Retina"
-				,"leftright" # combined sources? currently no split between retina & cornea.
-		# related muscles:
-				# ,"Rectus"
-				# , "Oblique"# (Muscle_SuperiorOblique_Right)
-		]
+				,"leftright" # all combined sources. currently this array item does not split between retina & cornea.
+			]
 	labelsourceindices = Dict()
 	for l in labels
-		labelsourceindices[l] = findall(k->occursin(l,k),m["label"][:])
-		WGLMakie.scatter!(model["pos"][findall(k->occursin(l,k),m["label"][:]),:])
+		labelsourceindices[l] = findall(k->occursin(l,k),model["label"][:])
+		WGLMakie.scatter!(model["pos"][findall(k->occursin(l,k),model["label"][:]),:])
+		print(l, length(labelsourceindices[l]),"\n")
 	end
-
-	# # finding a source close to a particular point
-	# coords = [0 0 0
-	# 10 10 10]
-	# coords = vec(coords)
-	# # WGLMakie.scatter!(model["pos"][4,:]) #[-22.06731879766108 66.95299145536906 -111.9397763342448])#
-	f
+	lsi = hart_indices_from_labels(model_large,labels) 
 end
+
+# ╔═╡ f752763a-1814-4281-a6a7-225d30627677
+f
 
 # ╔═╡ 2ed953c0-063a-401f-bd16-e0ed3a5d3598
 begin
-	labelsourceindices
+	labelsourceindices, lsi
 end
 
 # ╔═╡ 5b85e5e3-13c4-4584-982e-044984d37ea0
@@ -197,17 +199,17 @@ end
 
 # ╔═╡ 3e3d9d93-30ee-48e0-854f-4d55cabd2ce9
 begin
-	artefactlabels = unique(hartmut.artefactual["label"])
+	artefactlabels = unique(model["label"])
 	f2 = WGLMakie.scatter(model["pos"], alpha=0.025, color="grey");
 	#center of left and right eyeballs 
-	eyeleft_positions = [ model["pos"][findall(k->occursin("EyeCornea_left_",k), m["label"][:]),:] ; model["pos"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_left",k), m["label"][:]),:] ]
-	eyeright_positions = [ model["pos"][findall(k->occursin("EyeCornea_right_",k), m["label"][:]),:] ; model["pos"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_right",k), m["label"][:]),:] ]
+	eyeleft_positions = [ model["pos"][findall(k->occursin("EyeCornea_left_",k), model["label"][:]),:] ; model["pos"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_left",k), model["label"][:]),:] ]
+	eyeright_positions = [ model["pos"][findall(k->occursin("EyeCornea_right_",k), model["label"][:]),:] ; model["pos"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:] ]
 	eyeright_center = Statistics.mean(eyeright_positions,dims=1)
 	# not calculating for left eye since the label contains leftright points as well 
 	WGLMakie.scatter!(eyeright_positions) 
 	WGLMakie.scatter!(eyeright_center)
 	#WGLMakie.scatter!(Point(model["pos"][200]))
-	WGLMakie.scatter!(model["pos"][findall(k->occursin(artefactlabels[x],k),m["label"][:]),:]);
+	WGLMakie.scatter!(model["pos"][findall(k->occursin(artefactlabels[x],k),model["label"][:]),:]);
 	# artefactlabels[x]
 end
 
@@ -216,26 +218,6 @@ end
 
 # ╔═╡ 1f3da198-e3b4-4248-92da-c11049e8e217
 artefactlabels   
-
-# ╔═╡ 6110482c-cf69-4da6-bd1c-e5c44f6768fa
-# begin
-# 	pos = model["pos"]
-# 	s = size(pos)
-#     dist = zeros(s[1])
-#     diff1 = zeros(s[2])
-#     for i ∈ 1:s[1]
-#         for j ∈ 1:s[2]
-#             diff1[j] = pos[i, j] - coords[j]
-#         end
-#         dist[i] = norm(diff1)
-#     end
-#     print(findmin(dist))
-# 	size(dist), size(diff1)
-# 	Plots.plot(dist)
-# end
-
-# ╔═╡ ad5df86c-866b-4532-9ca6-af95e469dc45
-# print(model["pos"][22,:])
 
 # ╔═╡ 34b08570-7204-406c-a037-f6500b274cb4
 # UnfoldSim.closest_src([30, 50, -30], model["pos"])
@@ -261,20 +243,14 @@ artefactlabels
 pos = unique(model["pos"],dims=1) # some kind of duplication error comes up while trying to plot
   ╠═╡ =#
 
-# ╔═╡ a2567af4-22dc-4045-94ab-6c6bcef106c4
-
-
-# ╔═╡ c0c91af0-96cd-48b7-aced-98ac3e2e16b8
-
-
 # ╔═╡ 6451ed6a-4137-466d-97a9-974ecc71fb5d
 begin
 	datapoint = randn(StableRNG(1))
-	model_magnitude = magnitude(hartmut.artefactual["leadfield"]); ""#.*datapoint
+	model_magnitude = magnitude(model["leadfield"]); ""
 end
 
 # ╔═╡ b4bd229e-2f51-4df3-adf2-3d566d4f9374
-hartmut.artefactual["orientation"][150:220]
+model["orientation"][150:220,:]
 
 # ╔═╡ f2c830b0-5160-4de7-b32e-21fccf17c552
 begin
@@ -282,7 +258,7 @@ begin
 	# mydata = sum(model_magnitude[:,ii] for ii in labelsourceindices["leftright"])
 	
 	# mydata = sum(
-	mydata = 		sum(model_magnitude[:,ii] for ii in labelsourceindices["Retina"]) + 		sum(model_magnitude[:,ii] for ii in labelsourceindices["Cornea"])
+	mydata = sum(model_magnitude[:,ii] for ii in labelsourceindices["Retina"]) + sum(model_magnitude[:,ii] for ii in labelsourceindices["Cornea"])
 	# )
 	# mydata = sum(
 	# 	model_magnitude[:,ii] for ii in labelsourceindices["Cornea"]
@@ -294,11 +270,10 @@ end
 begin
 	#from unfoldsim docs multichannel
 	pos3d = hartmut.electrodes["pos"];
-pos2d = to_positions(pos3d')
-pos2d = [Point2f(p[1] + 0.5, p[2] + 0.5) for p in pos2d]; 
+	pos2d = to_positions(pos3d')
+	pos2d = [Point2f(p[1] + 0.5, p[2] + 0.5) for p in pos2d]; 
 	
 	mypos = pos2d
-	
 end
 
 # ╔═╡ 45de688b-9495-4b3e-8308-d17887385562
@@ -311,27 +286,26 @@ mytopoplot = plot_topoplot(mydata, positions=pos2d)
 # end
 
 # ╔═╡ 9bc8b00e-7af6-414b-90d6-5d585afdb1e4
-begin
-	typeof(dat[1:4, 340, 1]), typeof(mydata), typeof(positions),typeof(pos2d) 
-	# dat[1:4,340,1]
-end
+# begin
+# 	typeof(dat[1:4, 340, 1]), typeof(mydata), typeof(positions),typeof(pos2d) 
+# end
 
 # ╔═╡ 3c0b48f9-d765-431d-ac74-7e2574a2c1dd
-Plots.plot(f,f2,mytopoplot,layout=(1,3))
+# Plots.plot(f,f2,mytopoplot,layout=(1,3))
 
 # ╔═╡ 4ec1747e-7851-4708-9492-6b48c235ee86
-begin
-	fig = Figure()
-	ga = fig[1, 1] = GridLayout()
-	gb = fig[1, 2] = GridLayout()
-	gc = fig[2, 1] = GridLayout()
-	gd = fig[2, 2] = GridLayout()
-end
+# begin
+# 	fig = Figure()
+# 	ga = fig[1, 1] = GridLayout()
+# 	gb = fig[1, 2] = GridLayout()
+# 	gc = fig[2, 1] = GridLayout()
+# 	gd = fig[2, 2] = GridLayout()
+# end
 
 
 # ╔═╡ 5d962bc5-939d-424f-87ce-d51ecc12be85
 begin
-	plot_topoplot!(ga, LinearAlgebra.convert(Vector{Float32},mydata); positions=pos2d)
+	# plot_topoplot!(ga, LinearAlgebra.convert(Vector{Float32},mydata); positions=pos2d)
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -341,7 +315,6 @@ DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MAT = "23992714-dd62-5051-b70f-ba57cb901cac"
-Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
@@ -354,7 +327,6 @@ WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
 DataFrames = "~1.7.0"
 HDF5 = "~0.17.2"
 MAT = "~0.10.7"
-Plots = "~1.40.8"
 PlutoUI = "~0.7.60"
 StableRNGs = "~1.0.2"
 Statistics = "~1.11.1"
@@ -368,9 +340,9 @@ WGLMakie = "~0.10.11"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.11.1"
+julia_version = "1.11.2"
 manifest_format = "2.0"
-project_hash = "393bab0b2f8c88e6799b3464c4de7b53cb7c7be9"
+project_hash = "87797c8eb58f545f17fea67aad72ffb2261d5418"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -831,12 +803,6 @@ deps = ["Printf"]
 uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
 version = "1.11.0"
 
-[[deps.Dbus_jll]]
-deps = ["Artifacts", "Expat_jll", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "fc173b380865f70627d7dd1190dc2fce6cc105af"
-uuid = "ee1fde0b-3d02-5ea6-8484-8dfef6360eab"
-version = "1.14.10+0"
-
 [[deps.Delaunator]]
 git-tree-sha1 = "7fb89383502d2096d9aba6b42b70db80867ea909"
 uuid = "466f8f70-d5e3-4806-ac0b-a54b75a91218"
@@ -847,12 +813,6 @@ deps = ["AdaptivePredicates", "EnumX", "ExactPredicates", "PrecompileTools", "Ra
 git-tree-sha1 = "89df54fbe66e5872d91d8c2cd3a375f660c3fd64"
 uuid = "927a84f5-c5f4-47a5-9785-b46e178433df"
 version = "1.6.1"
-
-[[deps.DelimitedFiles]]
-deps = ["Mmap"]
-git-tree-sha1 = "9e2f36d3c96a820c678f2f1f1782582fcf685bae"
-uuid = "8bb1440f-4735-579b-a4ab-409b98df4dab"
-version = "1.9.1"
 
 [[deps.Deno_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -961,12 +921,6 @@ git-tree-sha1 = "bdb1942cd4c45e3c678fd11569d5cccd80976237"
 uuid = "4e289a0a-7415-4d19-859d-a7e5c4648b56"
 version = "1.0.4"
 
-[[deps.EpollShim_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "8e9441ee83492030ace98f9789a654a6d0b1f643"
-uuid = "2702e6a9-849d-5ed8-8c21-79e8b8f9ee43"
-version = "0.0.20230411+0"
-
 [[deps.ExactPredicates]]
 deps = ["IntervalArithmetic", "Random", "StaticArrays"]
 git-tree-sha1 = "b3f2ff58735b5f024c392fde763f29b057e4b025"
@@ -994,12 +948,6 @@ version = "0.1.10"
 git-tree-sha1 = "81023caa0021a41712685887db1fc03db26f41f5"
 uuid = "411431e0-e8b7-467b-b5e0-f676ba4f2910"
 version = "0.1.4"
-
-[[deps.FFMPEG]]
-deps = ["FFMPEG_jll"]
-git-tree-sha1 = "53ebe7511fa11d33bec688a9178fac4e49eeee00"
-uuid = "c87230d0-a227-11e9-1b43-d7ebe4e7570a"
-version = "0.4.2"
 
 [[deps.FFMPEG_jll]]
 deps = ["Artifacts", "Bzip2_jll", "FreeType2_jll", "FriBidi_jll", "JLLWrappers", "LAME_jll", "Libdl", "Ogg_jll", "OpenSSL_jll", "Opus_jll", "PCRE2_jll", "Zlib_jll", "libaom_jll", "libass_jll", "libfdk_aac_jll", "libvorbis_jll", "x264_jll", "x265_jll"]
@@ -1144,29 +1092,11 @@ deps = ["Random"]
 uuid = "9fa8497b-333b-5362-9e8d-4d0656e87820"
 version = "1.11.0"
 
-[[deps.GLFW_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Libglvnd_jll", "Xorg_libXcursor_jll", "Xorg_libXi_jll", "Xorg_libXinerama_jll", "Xorg_libXrandr_jll", "libdecor_jll", "xkbcommon_jll"]
-git-tree-sha1 = "532f9126ad901533af1d4f5c198867227a7bb077"
-uuid = "0656b61e-2033-5cc2-a64a-77c0f6c09b89"
-version = "3.4.0+1"
-
 [[deps.GLM]]
 deps = ["Distributions", "LinearAlgebra", "Printf", "Reexport", "SparseArrays", "SpecialFunctions", "Statistics", "StatsAPI", "StatsBase", "StatsFuns", "StatsModels"]
 git-tree-sha1 = "273bd1cd30768a2fddfa3fd63bbc746ed7249e5f"
 uuid = "38e38edf-8417-5370-95a0-9cbb8c7f171a"
 version = "1.9.0"
-
-[[deps.GR]]
-deps = ["Artifacts", "Base64", "DelimitedFiles", "Downloads", "GR_jll", "HTTP", "JSON", "Libdl", "LinearAlgebra", "Preferences", "Printf", "Qt6Wayland_jll", "Random", "Serialization", "Sockets", "TOML", "Tar", "Test", "p7zip_jll"]
-git-tree-sha1 = "ee28ddcd5517d54e417182fec3886e7412d3926f"
-uuid = "28b8d3ca-fb5f-59d9-8090-bfdbd6d07a71"
-version = "0.73.8"
-
-[[deps.GR_jll]]
-deps = ["Artifacts", "Bzip2_jll", "Cairo_jll", "FFMPEG_jll", "Fontconfig_jll", "FreeType2_jll", "GLFW_jll", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Libtiff_jll", "Pixman_jll", "Qt6Base_jll", "Zlib_jll", "libpng_jll"]
-git-tree-sha1 = "f31929b9e67066bee48eec8b03c0df47d31a74b3"
-uuid = "d2c73de3-f751-5644-a686-071e5b155ba9"
-version = "0.73.8+0"
 
 [[deps.GeoFormatTypes]]
 git-tree-sha1 = "59107c179a586f0fe667024c5eb7033e81333271"
@@ -1451,12 +1381,6 @@ git-tree-sha1 = "ce5737c0d4490b0e0040b5dc77fbb6a351ddf188"
 uuid = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 version = "0.5.8"
 
-[[deps.JLFzf]]
-deps = ["Pipe", "REPL", "Random", "fzf_jll"]
-git-tree-sha1 = "39d64b09147620f5ffbf6b2d3255be3c901bec63"
-uuid = "1019f520-868f-41f5-a6de-eb00f4b6a39c"
-version = "0.1.8"
-
 [[deps.JLLWrappers]]
 deps = ["Artifacts", "Preferences"]
 git-tree-sha1 = "be3dc50a92e5a386872a493a10050136d4703f9b"
@@ -1525,22 +1449,6 @@ version = "2.10.2+1"
 git-tree-sha1 = "dda21b8cbd6a6c40d9d02a73230f9d70fed6918c"
 uuid = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 version = "1.4.0"
-
-[[deps.Latexify]]
-deps = ["Format", "InteractiveUtils", "LaTeXStrings", "MacroTools", "Markdown", "OrderedCollections", "Requires"]
-git-tree-sha1 = "ce5f5621cac23a86011836badfedf664a612cee4"
-uuid = "23fbe1c1-3f47-55db-b15f-69d7ec21a316"
-version = "0.16.5"
-
-    [deps.Latexify.extensions]
-    DataFramesExt = "DataFrames"
-    SparseArraysExt = "SparseArrays"
-    SymEngineExt = "SymEngine"
-
-    [deps.Latexify.weakdeps]
-    DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
-    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
-    SymEngine = "123dc426-2d89-5057-bbad-38513e3affd8"
 
 [[deps.LazyArtifacts]]
 deps = ["Artifacts", "Pkg"]
@@ -1769,11 +1677,6 @@ version = "1.1.9"
 deps = ["Artifacts", "Libdl"]
 uuid = "c8ffd9c3-330d-5841-b78e-0817d7145fa1"
 version = "2.28.6+0"
-
-[[deps.Measures]]
-git-tree-sha1 = "c13304c81eec1ed3af7fc20e75fb6b26092a1102"
-uuid = "442fdcdd-2543-5da2-b0f3-8c86c306513e"
-version = "0.3.2"
 
 [[deps.MetaArrays]]
 deps = ["Requires"]
@@ -2023,12 +1926,6 @@ git-tree-sha1 = "0fac6313486baae819364c52b4f483450a9d793f"
 uuid = "5432bcbf-9aad-5242-b902-cca2824c8663"
 version = "0.5.12"
 
-[[deps.Pango_jll]]
-deps = ["Artifacts", "Cairo_jll", "Fontconfig_jll", "FreeType2_jll", "FriBidi_jll", "Glib_jll", "HarfBuzz_jll", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "e127b609fb9ecba6f201ba7ab753d5a605d53801"
-uuid = "36c8627f-9965-5494-a995-c6b170f724f3"
-version = "1.54.1+0"
-
 [[deps.Parameters]]
 deps = ["OrderedCollections", "UnPack"]
 git-tree-sha1 = "34c0e9ad262e5f7fc75b10a9952ca7692cfc5fbe"
@@ -2046,11 +1943,6 @@ deps = ["Compat", "RecipesBase"]
 git-tree-sha1 = "1627365757c8b87ad01c2c13e55a5120cbe5b548"
 uuid = "18e31ff7-3703-566c-8e60-38913d67486b"
 version = "0.4.4"
-
-[[deps.Pipe]]
-git-tree-sha1 = "6842804e7867b115ca9de748a0cf6b364523c16d"
-uuid = "b98c9c47-44ae-5843-9183-064241ee97a0"
-version = "1.3.0"
 
 [[deps.Pixman_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "LLVMOpenMP_jll", "Libdl"]
@@ -2073,37 +1965,11 @@ git-tree-sha1 = "f9501cc0430a26bc3d156ae1b5b0c1b47af4d6da"
 uuid = "eebad327-c553-4316-9ea0-9fa01ccd7688"
 version = "0.3.3"
 
-[[deps.PlotThemes]]
-deps = ["PlotUtils", "Statistics"]
-git-tree-sha1 = "41031ef3a1be6f5bbbf3e8073f210556daeae5ca"
-uuid = "ccf2f8ad-2431-5c83-bf29-c5338b663b6a"
-version = "3.3.0"
-
 [[deps.PlotUtils]]
 deps = ["ColorSchemes", "Colors", "Dates", "PrecompileTools", "Printf", "Random", "Reexport", "StableRNGs", "Statistics"]
 git-tree-sha1 = "3ca9a356cd2e113c420f2c13bea19f8d3fb1cb18"
 uuid = "995b91a9-d308-5afd-9ec6-746e21dbc043"
 version = "1.4.3"
-
-[[deps.Plots]]
-deps = ["Base64", "Contour", "Dates", "Downloads", "FFMPEG", "FixedPointNumbers", "GR", "JLFzf", "JSON", "LaTeXStrings", "Latexify", "LinearAlgebra", "Measures", "NaNMath", "Pkg", "PlotThemes", "PlotUtils", "PrecompileTools", "Printf", "REPL", "Random", "RecipesBase", "RecipesPipeline", "Reexport", "RelocatableFolders", "Requires", "Scratch", "Showoff", "SparseArrays", "Statistics", "StatsBase", "TOML", "UUIDs", "UnicodeFun", "UnitfulLatexify", "Unzip"]
-git-tree-sha1 = "45470145863035bb124ca51b320ed35d071cc6c2"
-uuid = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
-version = "1.40.8"
-
-    [deps.Plots.extensions]
-    FileIOExt = "FileIO"
-    GeometryBasicsExt = "GeometryBasics"
-    IJuliaExt = "IJulia"
-    ImageInTerminalExt = "ImageInTerminal"
-    UnitfulExt = "Unitful"
-
-    [deps.Plots.weakdeps]
-    FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
-    GeometryBasics = "5c1252a2-5f33-56bf-86c9-59e7332b4326"
-    IJulia = "7073ff75-c697-5162-941a-fcdaad2a7d2a"
-    ImageInTerminal = "d8c32880-2388-543b-8c61-d9f865259254"
-    Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [[deps.PlutoUI]]
 deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "FixedPointNumbers", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "MIMEs", "Markdown", "Random", "Reexport", "URIs", "UUIDs"]
@@ -2204,30 +2070,6 @@ git-tree-sha1 = "be2449911f4d6cfddacdf7efc895eceda3eee5c1"
 uuid = "784f63db-0788-585a-bace-daefebcd302b"
 version = "8.0.1003+0"
 
-[[deps.Qt6Base_jll]]
-deps = ["Artifacts", "CompilerSupportLibraries_jll", "Fontconfig_jll", "Glib_jll", "JLLWrappers", "Libdl", "Libglvnd_jll", "OpenSSL_jll", "Vulkan_Loader_jll", "Xorg_libSM_jll", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Xorg_libxcb_jll", "Xorg_xcb_util_cursor_jll", "Xorg_xcb_util_image_jll", "Xorg_xcb_util_keysyms_jll", "Xorg_xcb_util_renderutil_jll", "Xorg_xcb_util_wm_jll", "Zlib_jll", "libinput_jll", "xkbcommon_jll"]
-git-tree-sha1 = "492601870742dcd38f233b23c3ec629628c1d724"
-uuid = "c0090381-4147-56d7-9ebc-da0b1113ec56"
-version = "6.7.1+1"
-
-[[deps.Qt6Declarative_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Qt6Base_jll", "Qt6ShaderTools_jll"]
-git-tree-sha1 = "e5dd466bf2569fe08c91a2cc29c1003f4797ac3b"
-uuid = "629bc702-f1f5-5709-abd5-49b8460ea067"
-version = "6.7.1+2"
-
-[[deps.Qt6ShaderTools_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Qt6Base_jll"]
-git-tree-sha1 = "1a180aeced866700d4bebc3120ea1451201f16bc"
-uuid = "ce943373-25bb-56aa-8eca-768745ed7b5a"
-version = "6.7.1+1"
-
-[[deps.Qt6Wayland_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Qt6Base_jll", "Qt6Declarative_jll"]
-git-tree-sha1 = "729927532d48cf79f49070341e1d918a65aba6b0"
-uuid = "e99dba38-086e-5de3-a5b1-6e4c66e897c3"
-version = "6.7.1+1"
-
 [[deps.QuadGK]]
 deps = ["DataStructures", "LinearAlgebra"]
 git-tree-sha1 = "cda3b045cf9ef07a08ad46731f5a3165e56cf3da"
@@ -2270,12 +2112,6 @@ deps = ["PrecompileTools"]
 git-tree-sha1 = "5c3d09cc4f31f5fc6af001c250bf1278733100ff"
 uuid = "3cdcf5f2-1ef4-517c-9805-6587b60abb01"
 version = "1.3.4"
-
-[[deps.RecipesPipeline]]
-deps = ["Dates", "NaNMath", "PlotUtils", "PrecompileTools", "RecipesBase"]
-git-tree-sha1 = "45cf9fd0ca5839d06ef333c8201714e888486342"
-uuid = "01d81517-befc-4cb6-b9ec-a95719d0359c"
-version = "0.6.12"
 
 [[deps.Reexport]]
 git-tree-sha1 = "45e428421666073eab6f2da5c9d310d99bb12f9b"
@@ -2754,23 +2590,6 @@ weakdeps = ["ConstructionBase", "InverseFunctions"]
     ConstructionBaseUnitfulExt = "ConstructionBase"
     InverseFunctionsUnitfulExt = "InverseFunctions"
 
-[[deps.UnitfulLatexify]]
-deps = ["LaTeXStrings", "Latexify", "Unitful"]
-git-tree-sha1 = "975c354fcd5f7e1ddcc1f1a23e6e091d99e99bc8"
-uuid = "45397f5d-5981-4c77-b2b3-fc36d6e9b728"
-version = "1.6.4"
-
-[[deps.Unzip]]
-git-tree-sha1 = "ca0969166a028236229f63514992fc073799bb78"
-uuid = "41fe7b60-77ed-43a1-b4f0-825fd5a5650d"
-version = "0.2.0"
-
-[[deps.Vulkan_Loader_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Wayland_jll", "Xorg_libX11_jll", "Xorg_libXrandr_jll", "xkbcommon_jll"]
-git-tree-sha1 = "2f0486047a07670caad3a81a075d2e518acc5c59"
-uuid = "a44049a8-05dd-5a78-86c9-5fde0876e88c"
-version = "1.3.243+0"
-
 [[deps.WAV]]
 deps = ["Base64", "FileIO", "Libdl", "Logging"]
 git-tree-sha1 = "7e7e1b4686995aaf4ecaaf52f6cd824fa6bd6aa5"
@@ -2782,18 +2601,6 @@ deps = ["Bonito", "Colors", "FileIO", "FreeTypeAbstraction", "GeometryBasics", "
 git-tree-sha1 = "8ac9150de978e8215e7c9ab437d6f0a673748999"
 uuid = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
 version = "0.10.16"
-
-[[deps.Wayland_jll]]
-deps = ["Artifacts", "EpollShim_jll", "Expat_jll", "JLLWrappers", "Libdl", "Libffi_jll", "Pkg", "XML2_jll"]
-git-tree-sha1 = "7558e29847e99bc3f04d6569e82d0f5c54460703"
-uuid = "a2964d1f-97da-50d4-b82a-358c7fce9d89"
-version = "1.21.0+1"
-
-[[deps.Wayland_protocols_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
-git-tree-sha1 = "93f43ab61b16ddfb2fd3bb13b3ce241cafb0e6c9"
-uuid = "2381bf8a-dfd0-557d-9999-79630e7b1b91"
-version = "1.31.0+0"
 
 [[deps.WebP]]
 deps = ["CEnum", "ColorTypes", "FileIO", "FixedPointNumbers", "ImageCore", "libwebp_jll"]
@@ -2831,18 +2638,6 @@ git-tree-sha1 = "15e637a697345f6743674f1322beefbc5dcd5cfc"
 uuid = "ffd25f8a-64ca-5728-b0f7-c24cf3aae800"
 version = "5.6.3+0"
 
-[[deps.Xorg_libICE_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "326b4fea307b0b39892b3e85fa451692eda8d46c"
-uuid = "f67eecfb-183a-506d-b269-f58e52b52d7c"
-version = "1.1.1+0"
-
-[[deps.Xorg_libSM_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Xorg_libICE_jll"]
-git-tree-sha1 = "3796722887072218eabafb494a13c963209754ce"
-uuid = "c834827a-8449-5923-a945-d239c165b7dd"
-version = "1.2.4+0"
-
 [[deps.Xorg_libX11_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Xorg_libxcb_jll", "Xorg_xtrans_jll"]
 git-tree-sha1 = "afead5aba5aa507ad5a3bf01f58f82c8d1403495"
@@ -2855,12 +2650,6 @@ git-tree-sha1 = "6035850dcc70518ca32f012e46015b9beeda49d8"
 uuid = "0c0b7dd1-d40b-584c-a123-a41640f87eec"
 version = "1.0.11+0"
 
-[[deps.Xorg_libXcursor_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Xorg_libXfixes_jll", "Xorg_libXrender_jll"]
-git-tree-sha1 = "12e0eb3bc634fa2080c1c37fccf56f7c22989afd"
-uuid = "935fb764-8cf2-53bf-bb30-45bb1f8bf724"
-version = "1.2.0+4"
-
 [[deps.Xorg_libXdmcp_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "34d526d318358a859d7de23da945578e8e8727b7"
@@ -2872,30 +2661,6 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Xorg_libX11_jll"]
 git-tree-sha1 = "d2d1a5c49fae4ba39983f63de6afcbea47194e85"
 uuid = "1082639a-0dae-5f34-9b06-72781eeb8cb3"
 version = "1.3.6+0"
-
-[[deps.Xorg_libXfixes_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Xorg_libX11_jll"]
-git-tree-sha1 = "0e0dc7431e7a0587559f9294aeec269471c991a4"
-uuid = "d091e8ba-531a-589c-9de9-94069b037ed8"
-version = "5.0.3+4"
-
-[[deps.Xorg_libXi_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Xorg_libXext_jll", "Xorg_libXfixes_jll"]
-git-tree-sha1 = "89b52bc2160aadc84d707093930ef0bffa641246"
-uuid = "a51aa0fd-4e3c-5386-b890-e753decda492"
-version = "1.7.10+4"
-
-[[deps.Xorg_libXinerama_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Xorg_libXext_jll"]
-git-tree-sha1 = "26be8b1c342929259317d8b9f7b53bf2bb73b123"
-uuid = "d1454406-59df-5ea1-beac-c340f2130bc3"
-version = "1.1.4+4"
-
-[[deps.Xorg_libXrandr_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Xorg_libXext_jll", "Xorg_libXrender_jll"]
-git-tree-sha1 = "34cea83cb726fb58f325887bf0612c6b3fb17631"
-uuid = "ec84b674-ba8e-5d96-8ba1-2a689ba10484"
-version = "1.5.2+4"
 
 [[deps.Xorg_libXrender_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Xorg_libX11_jll"]
@@ -2915,60 +2680,6 @@ git-tree-sha1 = "bcd466676fef0878338c61e655629fa7bbc69d8e"
 uuid = "c7cfdc94-dc32-55de-ac96-5a1b8d977c5b"
 version = "1.17.0+0"
 
-[[deps.Xorg_libxkbfile_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Xorg_libX11_jll"]
-git-tree-sha1 = "730eeca102434283c50ccf7d1ecdadf521a765a4"
-uuid = "cc61e674-0454-545c-8b26-ed2c68acab7a"
-version = "1.1.2+0"
-
-[[deps.Xorg_xcb_util_cursor_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Xorg_xcb_util_image_jll", "Xorg_xcb_util_jll", "Xorg_xcb_util_renderutil_jll"]
-git-tree-sha1 = "04341cb870f29dcd5e39055f895c39d016e18ccd"
-uuid = "e920d4aa-a673-5f3a-b3d7-f755a4d47c43"
-version = "0.1.4+0"
-
-[[deps.Xorg_xcb_util_image_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Xorg_xcb_util_jll"]
-git-tree-sha1 = "0fab0a40349ba1cba2c1da699243396ff8e94b97"
-uuid = "12413925-8142-5f55-bb0e-6d7ca50bb09b"
-version = "0.4.0+1"
-
-[[deps.Xorg_xcb_util_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Xorg_libxcb_jll"]
-git-tree-sha1 = "e7fd7b2881fa2eaa72717420894d3938177862d1"
-uuid = "2def613f-5ad1-5310-b15b-b15d46f528f5"
-version = "0.4.0+1"
-
-[[deps.Xorg_xcb_util_keysyms_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Xorg_xcb_util_jll"]
-git-tree-sha1 = "d1151e2c45a544f32441a567d1690e701ec89b00"
-uuid = "975044d2-76e6-5fbe-bf08-97ce7c6574c7"
-version = "0.4.0+1"
-
-[[deps.Xorg_xcb_util_renderutil_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Xorg_xcb_util_jll"]
-git-tree-sha1 = "dfd7a8f38d4613b6a575253b3174dd991ca6183e"
-uuid = "0d47668e-0667-5a69-a72c-f761630bfb7e"
-version = "0.3.9+1"
-
-[[deps.Xorg_xcb_util_wm_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Xorg_xcb_util_jll"]
-git-tree-sha1 = "e78d10aab01a4a154142c5006ed44fd9e8e31b67"
-uuid = "c22f9ab0-d5fe-5066-847c-f4bb1cd4e361"
-version = "0.4.1+1"
-
-[[deps.Xorg_xkbcomp_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Xorg_libxkbfile_jll"]
-git-tree-sha1 = "330f955bc41bb8f5270a369c473fc4a5a4e4d3cb"
-uuid = "35661453-b289-5fab-8a00-3d9160c6a3a4"
-version = "1.4.6+0"
-
-[[deps.Xorg_xkeyboard_config_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Xorg_xkbcomp_jll"]
-git-tree-sha1 = "691634e5453ad362044e2ad653e79f3ee3bb98c3"
-uuid = "33bec58e-1273-512f-9401-5d533626f822"
-version = "2.39.0+0"
-
 [[deps.Xorg_xtrans_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "e92a1a012a10506618f10b7047e478403a046c77"
@@ -2985,24 +2696,6 @@ deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "555d1076590a6cc2fdee2ef1469451f872d8b41b"
 uuid = "3161d3a3-bdf6-5164-811a-617609db77b4"
 version = "1.5.6+1"
-
-[[deps.eudev_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "gperf_jll"]
-git-tree-sha1 = "431b678a28ebb559d224c0b6b6d01afce87c51ba"
-uuid = "35ca27e7-8b34-5b7f-bca9-bdc33f59eb06"
-version = "3.2.9+0"
-
-[[deps.fzf_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "936081b536ae4aa65415d869287d43ef3cb576b2"
-uuid = "214eeab7-80f7-51ab-84ad-2988db7cef09"
-version = "0.53.0+0"
-
-[[deps.gperf_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
-git-tree-sha1 = "3516a5630f741c9eecb3720b1ec9d8edc3ecc033"
-uuid = "1a1c6b14-54f6-533d-8383-74cd7377aa70"
-version = "3.1.1+0"
 
 [[deps.isoband_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -3033,29 +2726,11 @@ deps = ["Artifacts", "Libdl"]
 uuid = "8e850b90-86db-534c-a0d3-1478176c7d93"
 version = "5.11.0+0"
 
-[[deps.libdecor_jll]]
-deps = ["Artifacts", "Dbus_jll", "JLLWrappers", "Libdl", "Libglvnd_jll", "Pango_jll", "Wayland_jll", "xkbcommon_jll"]
-git-tree-sha1 = "9bf7903af251d2050b467f76bdbe57ce541f7f4f"
-uuid = "1183f4f0-6f2a-5f1a-908b-139f9cdfea6f"
-version = "0.2.2+0"
-
-[[deps.libevdev_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
-git-tree-sha1 = "141fe65dc3efabb0b1d5ba74e91f6ad26f84cc22"
-uuid = "2db6ffa8-e38f-5e21-84af-90c45d0032cc"
-version = "1.11.0+0"
-
 [[deps.libfdk_aac_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "8a22cf860a7d27e4f3498a0fe0811a7957badb38"
 uuid = "f638f0a6-7fb0-5443-88ba-1cc74229b280"
 version = "2.0.3+0"
-
-[[deps.libinput_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "eudev_jll", "libevdev_jll", "mtdev_jll"]
-git-tree-sha1 = "ad50e5b90f222cfe78aa3d5183a20a12de1322ce"
-uuid = "36db933b-70db-51c0-b978-0f229ee0e533"
-version = "1.18.0+0"
 
 [[deps.libpng_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Zlib_jll"]
@@ -3080,12 +2755,6 @@ deps = ["Artifacts", "Giflib_jll", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Lib
 git-tree-sha1 = "ccbb625a89ec6195856a50aa2b668a5c08712c94"
 uuid = "c5f90fcd-3b7e-5836-afba-fc50a0988cb2"
 version = "1.4.0+0"
-
-[[deps.mtdev_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
-git-tree-sha1 = "814e154bdb7be91d78b6802843f76b6ece642f11"
-uuid = "009596ad-96f7-51b1-9f1b-5ce2d5e8a71e"
-version = "1.1.6+0"
 
 [[deps.nghttp2_jll]]
 deps = ["Artifacts", "Libdl"]
@@ -3114,12 +2783,6 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "ee567a171cce03570d77ad3a43e90218e38937a9"
 uuid = "dfaa095f-4041-5dcd-9319-2fabd8486b76"
 version = "3.5.0+0"
-
-[[deps.xkbcommon_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Wayland_jll", "Wayland_protocols_jll", "Xorg_libxcb_jll", "Xorg_xkeyboard_config_jll"]
-git-tree-sha1 = "9c304562909ab2bab0262639bd4f444d7bc2be37"
-uuid = "d8fb68d0-12a3-5cfd-a85a-d49703b185fd"
-version = "1.4.1+1"
 """
 
 # ╔═╡ Cell order:
@@ -3128,21 +2791,17 @@ version = "1.4.1+1"
 # ╠═51a1deaf-1ff1-4aa5-a26e-84c0b608544c
 # ╠═398cf988-b75d-45b4-b8c8-6bb2342682d0
 # ╠═2fde0e5e-7543-4149-bf74-9b65573cc462
-# ╠═88200566-3286-458d-b6fd-b3b198d0895e
 # ╠═6d24eb05-61c7-40df-8c2e-05fa2d1f28ef
 # ╠═55d651d4-feea-470f-8640-e542a4620c36
+# ╠═f752763a-1814-4281-a6a7-225d30627677
 # ╠═2ed953c0-063a-401f-bd16-e0ed3a5d3598
 # ╠═91788d6d-69f1-428a-8db7-2f53be674bf9
 # ╠═5b85e5e3-13c4-4584-982e-044984d37ea0
 # ╠═3e3d9d93-30ee-48e0-854f-4d55cabd2ce9
 # ╠═1f3da198-e3b4-4248-92da-c11049e8e217
-# ╟─6110482c-cf69-4da6-bd1c-e5c44f6768fa
-# ╟─ad5df86c-866b-4532-9ca6-af95e469dc45
-# ╟─34b08570-7204-406c-a037-f6500b274cb4
-# ╟─4bca4f99-bf86-442a-9f9d-5b87576045a7
+# ╠═34b08570-7204-406c-a037-f6500b274cb4
+# ╠═4bca4f99-bf86-442a-9f9d-5b87576045a7
 # ╟─79b4999c-ec3f-4347-b06a-a97c2b2400a7
-# ╠═a2567af4-22dc-4045-94ab-6c6bcef106c4
-# ╠═c0c91af0-96cd-48b7-aced-98ac3e2e16b8
 # ╠═6451ed6a-4137-466d-97a9-974ecc71fb5d
 # ╠═b4bd229e-2f51-4df3-adf2-3d566d4f9374
 # ╠═f2c830b0-5160-4de7-b32e-21fccf17c552
