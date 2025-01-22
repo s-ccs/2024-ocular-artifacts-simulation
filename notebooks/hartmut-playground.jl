@@ -133,17 +133,40 @@ end
 # ╔═╡ 2fde0e5e-7543-4149-bf74-9b65573cc462
 begin
 	# import large and small hartmut models
-	hart_large = read_new_hartmut()
-	model_large = hart_large.artefactual
-	hartmut = UnfoldSim.headmodel()
-	model_small = hartmut.artefactual
+	# hart_large = read_new_hartmut()
+	# model_large = hart_large.artefactual
+	hart_small = UnfoldSim.headmodel()
+	hartmut = hart_small
+	# model_small = hartmut.artefactual
+	model = hartmut.artefactual
 	
 	# we can select which version we want to use
-	model = model_large
-	""
+	# model = model_small
+	# ""
+end
+
+# ╔═╡ 55d651d4-feea-470f-8640-e542a4620c36
+begin
+	f = WGLMakie.scatter(model["pos"], alpha=0.2, color="grey") #, markersize = 10
+	
+	# Search source labels for keyword 
+	# NOTE the property name is 'labels' in the original hartmut but 'label' in the UnfoldSim hartmut headmodel.
+	labels = [	"dummy"
+				,"Cornea"
+				,"Retina"
+				,"leftright" # all combined sources. currently this array item does not split between retina & cornea.
+			]
+	labelsourceindices = Dict()
+	for l in labels
+		labelsourceindices[l] = findall(k->occursin(l,k),model["label"][:])
+		WGLMakie.scatter!(model["pos"][findall(k->occursin(l,k),model["label"][:]),:])
+		print(l, length(labelsourceindices[l]),"\n")
+	end
+	# lsi = hart_indices_from_labels(model_large,labels) 
 end
 
 # ╔═╡ 6d24eb05-61c7-40df-8c2e-05fa2d1f28ef
+labels
 # begin
 
 # 	# Search source labels for keyword 
@@ -163,32 +186,13 @@ end
 	
 # end
 
-# ╔═╡ 55d651d4-feea-470f-8640-e542a4620c36
-begin
-	f = WGLMakie.scatter(model["pos"], alpha=0.2, color="grey") #, markersize = 10
-	
-	# Search source labels for keyword 
-	# NOTE the property name is 'labels' in the original hartmut but 'label' in the UnfoldSim hartmut headmodel.
-	labels = [	"dummy"
-				,"Cornea"
-				,"Retina"
-				,"leftright" # all combined sources. currently this array item does not split between retina & cornea.
-			]
-	labelsourceindices = Dict()
-	for l in labels
-		labelsourceindices[l] = findall(k->occursin(l,k),model["label"][:])
-		WGLMakie.scatter!(model["pos"][findall(k->occursin(l,k),model["label"][:]),:])
-		print(l, length(labelsourceindices[l]),"\n")
-	end
-	lsi = hart_indices_from_labels(model_large,labels) 
-end
-
 # ╔═╡ f752763a-1814-4281-a6a7-225d30627677
 f
 
 # ╔═╡ 2ed953c0-063a-401f-bd16-e0ed3a5d3598
 begin
-	labelsourceindices, lsi
+	# print(length(model_small["label"]),"\nlarge: ",length(model_large["label"]))
+	# labelsourceindices, lsi
 end
 
 # ╔═╡ 5b85e5e3-13c4-4584-982e-044984d37ea0
@@ -243,6 +247,9 @@ artefactlabels
 pos = unique(model["pos"],dims=1) # some kind of duplication error comes up while trying to plot
   ╠═╡ =#
 
+# ╔═╡ 6a210f28-891d-4bfb-a243-3c9ad8d3a3f0
+WGLMakie.Page() 
+
 # ╔═╡ 6451ed6a-4137-466d-97a9-974ecc71fb5d
 begin
 	datapoint = randn(StableRNG(1))
@@ -258,7 +265,10 @@ begin
 	# mydata = sum(model_magnitude[:,ii] for ii in labelsourceindices["leftright"])
 	
 	# mydata = sum(
-	mydata = sum(model_magnitude[:,ii] for ii in labelsourceindices["Retina"]) + sum(model_magnitude[:,ii] for ii in labelsourceindices["Cornea"])
+	mag_retina = sum(model_magnitude[:,ii] for ii in labelsourceindices["Retina"])
+	mag_cornea = sum(model_magnitude[:,ii] for ii in labelsourceindices["Cornea"])
+	mydata = mag_retina - mag_cornea
+	sumdata = mag_retina + mag_cornea
 	# )
 	# mydata = sum(
 	# 	model_magnitude[:,ii] for ii in labelsourceindices["Cornea"]
@@ -278,6 +288,15 @@ end
 
 # ╔═╡ 45de688b-9495-4b3e-8308-d17887385562
 mytopoplot = plot_topoplot(mydata, positions=pos2d)
+
+# ╔═╡ f9c7afb8-4375-4d4e-a223-510a6ce6d3a5
+mytopoplot_sum = plot_topoplot(sumdata, positions=pos2d)
+
+# ╔═╡ 984892c2-94ad-404b-8919-c116ac0c0339
+plot_topoplot(mydata - sumdata, positions=pos2d)
+
+# ╔═╡ b3573611-eeaa-468a-a320-baa5798e5276
+# WGLMakie.Page()
 
 # ╔═╡ d511f3de-be25-4c33-91e7-7af1b21b1eda
 # begin
@@ -306,6 +325,43 @@ mytopoplot = plot_topoplot(mydata, positions=pos2d)
 # ╔═╡ 5d962bc5-939d-424f-87ce-d51ecc12be85
 begin
 	# plot_topoplot!(ga, LinearAlgebra.convert(Vector{Float32},mydata); positions=pos2d)
+	# model["label"]
+	eyeright_orientations = [ model["orientation"][findall(k->occursin("EyeCornea_right_",k), model["label"][:]),:] ; model["orientation"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:] ]
+
+	# corna: horizontal as well as vertical. Selecting horizontal for now
+	pos_cornea = model["pos"][findall(k->occursin("EyeCornea_right_horizontal",k), model["label"][:]),:]
+	or_cornea = model["orientation"][findall(k->occursin("EyeCornea_right_horizontal",k), model["label"][:]),:]
+
+	# retina_choroid_sclera: no horizontal/vertical, just one set of orientations
+	pos_rcs = model["pos"][findall(k->occursin("EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:]
+	or_rcs = model["orientation"][findall(k->occursin("EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:]
+end
+
+# ╔═╡ 0be94a3d-20aa-4a53-aea9-a99f7b57599d
+begin
+	# plot orientations of source points
+	# arrows(,Vec3f(model["orientation"]))
+	# point3fs = [Point3f(p...) for p in eachrow(model["pos"])]
+	# vectors = [Vec3f(o...) for o in eachrow(model["orientation"])]
+	# # map(p -> p[1],model["pos"])
+	# model["orientation"]
+	f3 = WGLMakie.scatter(model["pos"], alpha=0.1, color="grey")
+	point3fs = [Point3f(p...) for p in eachrow(pos_cornea)]
+	# f3 = surface(pos_cornea, alpha=0.1)
+	vectors = [Vec3f(o...) for o in eachrow(or_cornea).*3]
+	lengths = norm.(vectors)
+	arrows!(point3fs, vectors, color=lengths, arrowsize=0.3)
+	f3
+end
+
+# ╔═╡ 0043e40c-f667-4838-9ef7-d987af94a4d1
+begin
+	f4 = WGLMakie.scatter(model["pos"], alpha=0.1, color="grey")
+	point3fs2 = [Point3f(p...) for p in eachrow(pos_rcs)]
+	vectors2 = [Vec3f(o...) for o in eachrow(or_rcs).*6]
+	lengths2 = norm.(vectors2)
+	arrows!(point3fs2, vectors2, color=lengths, arrowsize=0.3)
+	f4
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -2802,15 +2858,21 @@ version = "3.5.0+0"
 # ╠═34b08570-7204-406c-a037-f6500b274cb4
 # ╠═4bca4f99-bf86-442a-9f9d-5b87576045a7
 # ╟─79b4999c-ec3f-4347-b06a-a97c2b2400a7
+# ╠═6a210f28-891d-4bfb-a243-3c9ad8d3a3f0
 # ╠═6451ed6a-4137-466d-97a9-974ecc71fb5d
 # ╠═b4bd229e-2f51-4df3-adf2-3d566d4f9374
 # ╠═f2c830b0-5160-4de7-b32e-21fccf17c552
 # ╠═37412158-83a3-48b2-9384-17c6886c9ea3
 # ╠═45de688b-9495-4b3e-8308-d17887385562
+# ╠═f9c7afb8-4375-4d4e-a223-510a6ce6d3a5
+# ╠═984892c2-94ad-404b-8919-c116ac0c0339
+# ╠═b3573611-eeaa-468a-a320-baa5798e5276
 # ╠═d511f3de-be25-4c33-91e7-7af1b21b1eda
 # ╠═9bc8b00e-7af6-414b-90d6-5d585afdb1e4
 # ╠═3c0b48f9-d765-431d-ac74-7e2574a2c1dd
 # ╠═4ec1747e-7851-4708-9492-6b48c235ee86
 # ╠═5d962bc5-939d-424f-87ce-d51ecc12be85
+# ╟─0be94a3d-20aa-4a53-aea9-a99f7b57599d
+# ╠═0043e40c-f667-4838-9ef7-d987af94a4d1
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
