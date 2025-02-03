@@ -38,17 +38,6 @@ begin
 	using HDF5
 end
 
-# ╔═╡ 51a1deaf-1ff1-4aa5-a26e-84c0b608544c
-begin
-	# dlpath = download("https://github.com/harmening/HArtMuT/raw/main/HArtMuTmodels/HArtMuT_NYhead_small.mat")
-	# file = matopen("HArtMuT_NYhead_large_fibers.mat") # dlpath
-	# hartmut1 = read(file, "HArtMuT");
-	# close(file);
-	# model1 = hartmut1["artefactmodel"]
-	# model = hartmut1["cortexmodel"]
-	
-end
-
 # ╔═╡ 398cf988-b75d-45b4-b8c8-6bb2342682d0
 begin
 	function read_new_hartmut(;p = "HArtMuT_NYhead_large_fibers.mat")
@@ -130,20 +119,31 @@ begin
 	end
 end
 
+# ╔═╡ 850b1a81-c1fd-463a-abc9-e7484ef8555c
+begin
+	function read_eyemodel(;p = "HArtMuT_NYhead_extra_eyemodel.mat")
+		file = matopen(p);
+		hartmut = read(file,"eyemodel")
+		close(file)
+		hartmut
+	end
+end
+
 # ╔═╡ 2fde0e5e-7543-4149-bf74-9b65573cc462
 begin
 	# import large and small hartmut models
-	# hart_large = read_new_hartmut()
+	hart_large = read_new_hartmut(; p="HArtMuT_NYhead_large_fibers.mat")
 	# model_large = hart_large.artefactual
 	hart_small = UnfoldSim.headmodel()
-	hartmut = hart_small
-	# model_small = hartmut.artefactual
+	hartmut = hart_large #hart_small # select the large or small model
 	model = hartmut.artefactual
-	
-	# we can select which version we want to use
-	# model = model_small
-	# ""
 end
+
+# ╔═╡ c232c5d9-c3ce-40af-b3d0-523bc7baac54
+eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel.mat")
+
+# ╔═╡ 09258399-2468-45f8-ba35-b244ffe21373
+unique(model["label"]) # view all available labels in the model
 
 # ╔═╡ 55d651d4-feea-470f-8640-e542a4620c36
 begin
@@ -152,15 +152,19 @@ begin
 	# Search source labels for keyword 
 	# NOTE the property name is 'labels' in the original hartmut but 'label' in the UnfoldSim hartmut headmodel.
 	labels = [	"dummy"
-				,"Cornea"
-				,"Retina"
-				,"leftright" # all combined sources. currently this array item does not split between retina & cornea.
+				# ,"Cornea"
+				# ,"Retina"
+				# ,"leftright" # all combined sources. currently this array item does not split between retina & cornea.
+				,r"EyeRetina_Choroid_Sclera_left$"
+				,"EyeCornea_left_"
+				,r"EyeRetina_Choroid_Sclera_right$"
+				,"EyeCornea_right_"
 			]
 	labelsourceindices = Dict()
 	for l in labels
 		labelsourceindices[l] = findall(k->occursin(l,k),model["label"][:])
 		WGLMakie.scatter!(model["pos"][findall(k->occursin(l,k),model["label"][:]),:])
-		print(l, length(labelsourceindices[l]),"\n")
+		print(l, ": ", length(labelsourceindices[l])," points\n")
 	end
 	# lsi = hart_indices_from_labels(model_large,labels) 
 end
@@ -206,49 +210,40 @@ begin
 	artefactlabels = unique(model["label"])
 	f2 = WGLMakie.scatter(model["pos"], alpha=0.025, color="grey");
 	#center of left and right eyeballs 
-	eyeleft_positions = [ model["pos"][findall(k->occursin("EyeCornea_left_",k), model["label"][:]),:] ; model["pos"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_left",k), model["label"][:]),:] ]
-	eyeright_positions = [ model["pos"][findall(k->occursin("EyeCornea_right_",k), model["label"][:]),:] ; model["pos"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:] ]
+	eyeleft_positions = [ model["pos"][findall(k->occursin("EyeCornea_left_",k), model["label"][:]),:] ; model["pos"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_left$",k), model["label"][:]),:] ]
+	
+	eyeright_positions = [ model["pos"][findall(k->occursin("EyeCornea_right_",k), model["label"][:]),:] ; model["pos"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_right$",k), model["label"][:]),:] ]
+	
+	# find center
+	eyeleft_center = Statistics.mean(eyeleft_positions,dims=1)
 	eyeright_center = Statistics.mean(eyeright_positions,dims=1)
-	# not calculating for left eye since the label contains leftright points as well 
-	WGLMakie.scatter!(eyeright_positions) 
+	
+	#plot eye positions & center
+	WGLMakie.scatter!(eyeleft_positions) 
 	WGLMakie.scatter!(eyeright_center)
+	WGLMakie.scatter!(eyeleft_center,color="red")
 	#WGLMakie.scatter!(Point(model["pos"][200]))
-	WGLMakie.scatter!(model["pos"][findall(k->occursin(artefactlabels[x],k),model["label"][:]),:]);
+
+	# plot points for a specific label (@bind x)
+	# WGLMakie.scatter!(model["pos"][findall(k->occursin(artefactlabels[x],k),model["label"][:]),:]);
 	# artefactlabels[x]
 end
 
 # ╔═╡ 91788d6d-69f1-428a-8db7-2f53be674bf9
 	f2
 
+# ╔═╡ 92c6674f-834d-4966-888e-7432a7f0e0ef
+eyeleft_labels = [ model["label"][findall(k->occursin("EyeCornea_left_",k), model["label"][:]),:] ; model["label"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_left$",k), model["label"][:]),:] ]
+
+
+# ╔═╡ 505a5eb5-8fa2-4cf5-9641-29267d3c20b1
+print(unique(eyeleft_labels))
+
 # ╔═╡ 1f3da198-e3b4-4248-92da-c11049e8e217
 artefactlabels   
 
-# ╔═╡ 34b08570-7204-406c-a037-f6500b274cb4
-# UnfoldSim.closest_src([30, 50, -30], model["pos"])
-
-# ╔═╡ 4bca4f99-bf86-442a-9f9d-5b87576045a7
-# begin
-# 	# plot the positions to get a visualisation
-# 	f = Figure()
-# 	ax = Axis3(f[1, 1],
-# 	    title = "A Makie Axis",
-# 	    xlabel = "The x label",
-# 	    ylabel = "The y label"
-# 	)
-# 	f
-# 	WGLMakie.surface!(ax,model["pos"][:,1],model["pos"][:,2],model["pos"][:,3])
-# 	# scatter!(ax,50,-40,-25,color="red")
-# 	f
-# end
-
-# ╔═╡ 79b4999c-ec3f-4347-b06a-a97c2b2400a7
-# ╠═╡ disabled = true
-#=╠═╡
-pos = unique(model["pos"],dims=1) # some kind of duplication error comes up while trying to plot
-  ╠═╡ =#
-
 # ╔═╡ 6a210f28-891d-4bfb-a243-3c9ad8d3a3f0
-WGLMakie.Page() 
+# WGLMakie.Page() 
 
 # ╔═╡ 6451ed6a-4137-466d-97a9-974ecc71fb5d
 begin
@@ -293,7 +288,7 @@ mytopoplot = plot_topoplot(mydata, positions=pos2d)
 mytopoplot_sum = plot_topoplot(sumdata, positions=pos2d)
 
 # ╔═╡ 984892c2-94ad-404b-8919-c116ac0c0339
-plot_topoplot(mydata - sumdata, positions=pos2d)
+plot_topoplot(mag_cornea, positions=pos2d)
 
 # ╔═╡ b3573611-eeaa-468a-a320-baa5798e5276
 # WGLMakie.Page()
@@ -333,8 +328,8 @@ begin
 	or_cornea = model["orientation"][findall(k->occursin("EyeCornea_right_horizontal",k), model["label"][:]),:]
 
 	# retina_choroid_sclera: no horizontal/vertical, just one set of orientations
-	pos_rcs = model["pos"][findall(k->occursin("EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:]
-	or_rcs = model["orientation"][findall(k->occursin("EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:]
+	pos_retina = model["pos"][findall(k->occursin("EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:]
+	or_retina = model["orientation"][findall(k->occursin("EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:]
 end
 
 # ╔═╡ 0be94a3d-20aa-4a53-aea9-a99f7b57599d
@@ -357,8 +352,8 @@ end
 # ╔═╡ 0043e40c-f667-4838-9ef7-d987af94a4d1
 begin
 	f4 = WGLMakie.scatter(model["pos"], alpha=0.1, color="grey")
-	point3fs2 = [Point3f(p...) for p in eachrow(pos_rcs)]
-	vectors2 = [Vec3f(o...) for o in eachrow(or_rcs).*6]
+	point3fs2 = [Point3f(p...) for p in eachrow(pos_retina)]
+	vectors2 = [Vec3f(o...) for o in eachrow(or_retina).*6]
 	lengths2 = norm.(vectors2)
 	arrows!(point3fs2, vectors2, color=lengths, arrowsize=0.3)
 	f4
@@ -2844,9 +2839,11 @@ version = "3.5.0+0"
 # ╔═╡ Cell order:
 # ╠═58cfd854-4f0c-11ee-33d6-71433b23db47
 # ╠═535a3124-0658-4e3b-8245-3c023c0e5f1d
-# ╠═51a1deaf-1ff1-4aa5-a26e-84c0b608544c
 # ╠═398cf988-b75d-45b4-b8c8-6bb2342682d0
+# ╠═850b1a81-c1fd-463a-abc9-e7484ef8555c
 # ╠═2fde0e5e-7543-4149-bf74-9b65573cc462
+# ╠═c232c5d9-c3ce-40af-b3d0-523bc7baac54
+# ╠═09258399-2468-45f8-ba35-b244ffe21373
 # ╠═6d24eb05-61c7-40df-8c2e-05fa2d1f28ef
 # ╠═55d651d4-feea-470f-8640-e542a4620c36
 # ╠═f752763a-1814-4281-a6a7-225d30627677
@@ -2854,10 +2851,9 @@ version = "3.5.0+0"
 # ╠═91788d6d-69f1-428a-8db7-2f53be674bf9
 # ╠═5b85e5e3-13c4-4584-982e-044984d37ea0
 # ╠═3e3d9d93-30ee-48e0-854f-4d55cabd2ce9
+# ╠═92c6674f-834d-4966-888e-7432a7f0e0ef
+# ╠═505a5eb5-8fa2-4cf5-9641-29267d3c20b1
 # ╠═1f3da198-e3b4-4248-92da-c11049e8e217
-# ╠═34b08570-7204-406c-a037-f6500b274cb4
-# ╠═4bca4f99-bf86-442a-9f9d-5b87576045a7
-# ╟─79b4999c-ec3f-4347-b06a-a97c2b2400a7
 # ╠═6a210f28-891d-4bfb-a243-3c9ad8d3a3f0
 # ╠═6451ed6a-4137-466d-97a9-974ecc71fb5d
 # ╠═b4bd229e-2f51-4df3-adf2-3d566d4f9374
