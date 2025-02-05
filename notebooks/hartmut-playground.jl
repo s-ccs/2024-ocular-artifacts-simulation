@@ -18,13 +18,16 @@ end
 
 # ╔═╡ 58cfd854-4f0c-11ee-33d6-71433b23db47
 begin
-	# using Plots
 	using WGLMakie
 	using MAT
 	using StableRNGs
 	using UnfoldSim
 	using LinearAlgebra
 	using PlutoUI
+
+	# for helper function to read in the large model
+	using HDF5
+	using DataFrames
 
 	#topoplots
 	using UnfoldMakie
@@ -34,8 +37,6 @@ end
 # ╔═╡ 535a3124-0658-4e3b-8245-3c023c0e5f1d
 begin
 	using Statistics
-	using DataFrames
-	using HDF5
 end
 
 # ╔═╡ 398cf988-b75d-45b4-b8c8-6bb2342682d0
@@ -126,11 +127,13 @@ end
 # ╔═╡ 2fde0e5e-7543-4149-bf74-9b65573cc462
 begin
 	# import large and small hartmut models
-	hart_large = read_new_hartmut(; p="HArtMuT_NYhead_large_fibers.mat")
-	# model_large = hart_large.artefactual
-	hart_small = UnfoldSim.headmodel()
-	hartmut = hart_small #hart_large # select the large or small model
-	model = hartmut.artefactual
+	hart_large = read_new_hartmut(; p="HArtMuT_NYhead_large_fibers.mat");
+	hart_small = UnfoldSim.headmodel();
+	hartmut = hart_small; #hart_large # select the large or small model
+	model = hartmut.artefactual;
+	# show the count of source points
+	println("\nSize of source points Dict (points x dimensions): ", size(model["pos"]))
+	model # view the structure of the model
 end
 
 # ╔═╡ 275c91de-8790-4a44-937b-a55a770dd9ee
@@ -143,19 +146,34 @@ begin
 			if plot
 				WGLMakie.scatter!(model["pos"][labelsourceindices[l],:]) #optional: plot these points into the existing figure
 			end
-			print(l, ": ", length(labelsourceindices[l])," points\n")
+			println(l, ": ", length(labelsourceindices[l])," points")
 		end
 		return labelsourceindices
 	end
 end
 
 # ╔═╡ 09258399-2468-45f8-ba35-b244ffe21373
-unique(model["label"]) # view all available labels in the model
+ unique(model["label"]) # view the list of labels (unique)
+
+# ╔═╡ 5b85e5e3-13c4-4584-982e-044984d37ea0
+begin
+	# get the list of labels
+	artefactlabels = unique(model["label"])
+	# scroll through to select whichever artefact label you want to plot
+	labelselector = @bind x NumberField(1:length(artefactlabels))
+end
+
+# ╔═╡ e69e6c73-a4f1-4efb-8ba7-b9e9e20305e4
+begin
+	f = WGLMakie.scatter(model["pos"], alpha=0.2, color="grey")
+	# optional: plot points for a specific label (select value from UI spinner with @bind x)
+	WGLMakie.scatter!(model["pos"][findall(k->occursin(artefactlabels[x],k),model["label"][:]),:]);
+	println("currently inspecting label: ", artefactlabels[x])	
+	f
+end
 
 # ╔═╡ 55d651d4-feea-470f-8640-e542a4620c36
 begin
-	f = WGLMakie.scatter(model["pos"], alpha=0.2, color="grey")
-	
 	# Search source labels for specific keywords and find the indices of those sources
 	
 	# (NOTE the property name is 'labels' in the original hartmut file, but 'label' in the UnfoldSim hartmut headmodel.)
@@ -167,13 +185,24 @@ begin
 				,r"EyeRetina_Choroid_Sclera_right$"
 				,"EyeCornea_right_"
 			]
+	# TODO: add label search term for complete L/R eye (instead of separate retina/cornea) and one for all L&R/retina&cornea points
+	# TODO: add label to select only horizontal or only vertical oriented cornea sources? -> may not be necessary if all sources have only one orientation (namely towards the eye center) 
 	labelsourceindices = hart_indices_from_labels(model,labels) 
+end
+
+# ╔═╡ b4bd229e-2f51-4df3-adf2-3d566d4f9374
+begin
+	# Miscellaneous code snippets
+	
+	# inspect orientation of a set of source points 
+	# model["orientation"][150:220,:]
+	
+	# inspect (unique) labels for one eye
+	# eyeleft_labels_unique = unique(model["label"][eyeleft_idx,:])
 end
 
 # ╔═╡ b6d9426a-1632-4fc7-a8eb-6fde0c60f0cb
 begin
-	# TODO: add label search term for complete L/R eye instead of separate retina/cornea
-
 	eyeleft_idx = [ 
 		labelsourceindices["EyeCornea_left_"] ; labelsourceindices[r"EyeRetina_Choroid_Sclera_left$"] 
 	]
@@ -182,41 +211,20 @@ begin
 	]
 end
 
-# ╔═╡ f752763a-1814-4281-a6a7-225d30627677
-f
-
-# ╔═╡ 788d3eb7-1b76-46bd-88ad-8d0f5c494586
-begin
-	# optional: plot points for a specific label (value from @bind x)
-	# WGLMakie.scatter!(model["pos"][findall(k->occursin(artefactlabels[x],k),model["label"][:]),:]);
-	# artefactlabels[x]
-end
-
-# ╔═╡ 5b85e5e3-13c4-4584-982e-044984d37ea0
-begin
-	# scroll through to select whichever artefact label you want to plot
-	element = @bind x NumberField(1:62) # can't use labels.length - some kind of dependency error between cells
-end
-
 # ╔═╡ 3e3d9d93-30ee-48e0-854f-4d55cabd2ce9
-begin
-	artefactlabels = unique(model["label"])
-	f2 = WGLMakie.scatter(model["pos"], alpha=0.025, color="grey");
-	#center of left and right eyeballs 
-	eyeleft_positions = [ 
-		model["pos"][labelsourceindices["EyeCornea_left_"],:] ; 
-		model["pos"][labelsourceindices[r"EyeRetina_Choroid_Sclera_left$"],:] 
-	]	
-	eyeright_positions = [
-		model["pos"][labelsourceindices["EyeCornea_right_"],:] ; 
-		model["pos"][labelsourceindices[r"EyeRetina_Choroid_Sclera_right$"],:] 
-	]
+begin	
+	# plot eye sources and L/R eye centroids
+	
+	fig_eyes = WGLMakie.scatter(model["pos"], alpha=0.025, color="grey");
+	
+	# positions of left and right eyeball points 
+	eyeleft_positions =	model["pos"][eyeleft_idx,:]
+	eyeright_positions = model["pos"][eyeright_idx,:]
 	
 	# find center
 	eyeleft_center = Statistics.mean(eyeleft_positions,dims=1)
 	eyeright_center = Statistics.mean(eyeright_positions,dims=1)
 	
-	#plot eye positions & center
 	WGLMakie.scatter!(eyeleft_positions)
 	WGLMakie.scatter!(eyeright_positions) 
 	WGLMakie.scatter!(eyeright_center)
@@ -224,32 +232,53 @@ begin
 end
 
 # ╔═╡ 91788d6d-69f1-428a-8db7-2f53be674bf9
-f2
-
-# ╔═╡ 92c6674f-834d-4966-888e-7432a7f0e0ef
-begin
-	eyeleft_labels = [ model["label"][labelsourceindices["EyeCornea_left_"]] 
-		; model["label"][labelsourceindices[r"EyeRetina_Choroid_Sclera_left$"] ]
-	]
-end
-
-# ╔═╡ 505a5eb5-8fa2-4cf5-9641-29267d3c20b1
-print(unique(eyeleft_labels))
-
-# ╔═╡ 1f3da198-e3b4-4248-92da-c11049e8e217
-artefactlabels   
+fig_eyes
 
 # ╔═╡ 6a210f28-891d-4bfb-a243-3c9ad8d3a3f0
 WGLMakie.Page() 
+
+# ╔═╡ 0be94a3d-20aa-4a53-aea9-a99f7b57599d
+begin
+	# inspect sources - plot position & orientation (exaggerated arrow lengths to see orientation better)
+
+	# plotting only cornea of only the right eye. retina-right-eye is plotted in another cell.
+
+	# cornea: horizontal as well as vertical oriented sources are available. Selecting horizontal for now
+	pos_cornea = model["pos"][findall(k->occursin("EyeCornea_right_horizontal",k), model["label"][:]),:]
+	or_cornea = model["orientation"][findall(k->occursin("EyeCornea_right_horizontal",k), model["label"][:]),:]
+
+	fig_cornea = WGLMakie.scatter(model["pos"], alpha=0.1, color="grey")
+	point3fs = [Point3f(p...) for p in eachrow(pos_cornea)]
+	vectors = [Vec3f(o...) for o in eachrow(or_cornea).*3]
+	arrows!(point3fs, vectors, arrowsize=0.3)
+
+	fig_cornea
+	
+
+	# # another option: forget about horizontal/vertical distinction and retina/cornea, just select positions and orientations of the right eye and plot those
+	# eyeright_orientations = model["orientation"][eyeright_idx,:]
+end
+
+# ╔═╡ 0043e40c-f667-4838-9ef7-d987af94a4d1
+begin
+	# plot retina sources - position & orientation (exaggerated arrow lengths to see orientation better)
+
+	# retina_choroid_sclera: no horizontal/vertical, just one set of orientations
+	pos_retina = model["pos"][findall(k->occursin("EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:]
+	or_retina = model["orientation"][findall(k->occursin("EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:]
+	
+	fig_retina = WGLMakie.scatter(model["pos"], alpha=0.05, color="grey")
+	point3fs2 = [Point3f(p...) for p in eachrow(pos_retina)]
+	vectors2 = [Vec3f(o...) for o in eachrow(or_retina).*6]
+	arrows!(point3fs2, vectors2, arrowsize=0.3)
+	fig_retina
+end
 
 # ╔═╡ 6451ed6a-4137-466d-97a9-974ecc71fb5d
 begin
 	datapoint = randn(StableRNG(1))
 	model_magnitude = magnitude(model["leadfield"]); ""
 end
-
-# ╔═╡ b4bd229e-2f51-4df3-adf2-3d566d4f9374
-model["orientation"][150:220,:]
 
 # ╔═╡ f2c830b0-5160-4de7-b32e-21fccf17c552
 begin
@@ -290,42 +319,6 @@ end
 # ╔═╡ b3573611-eeaa-468a-a320-baa5798e5276
 # WGLMakie.Page()
 
-# ╔═╡ 5d962bc5-939d-424f-87ce-d51ecc12be85
-begin
-	eyeright_orientations = [ model["orientation"][findall(k->occursin("EyeCornea_right_",k), model["label"][:]),:] ; model["orientation"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:] ]
-
-	# cornea: horizontal as well as vertical. Selecting horizontal for now
-	pos_cornea = model["pos"][findall(k->occursin("EyeCornea_right_horizontal",k), model["label"][:]),:]
-	or_cornea = model["orientation"][findall(k->occursin("EyeCornea_right_horizontal",k), model["label"][:]),:]
-
-	# retina_choroid_sclera: no horizontal/vertical, just one set of orientations
-	pos_retina = model["pos"][findall(k->occursin("EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:]
-	or_retina = model["orientation"][findall(k->occursin("EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:]
-end
-
-# ╔═╡ 0be94a3d-20aa-4a53-aea9-a99f7b57599d
-begin
-	# plot cornea sources - position & orientation (exaggerated arrow lengths to see orientation better)
-	f3 = WGLMakie.scatter(model["pos"], alpha=0.1, color="grey")
-	point3fs = [Point3f(p...) for p in eachrow(pos_cornea)]
-	# f3 = surface(pos_cornea, alpha=0.1)
-	vectors = [Vec3f(o...) for o in eachrow(or_cornea).*3]
-	lengths = norm.(vectors)
-	arrows!(point3fs, vectors, color=lengths, arrowsize=0.3)
-	# f3
-end
-
-# ╔═╡ 0043e40c-f667-4838-9ef7-d987af94a4d1
-begin
-	# plot retina sources - position & orientation (exaggerated arrow lengths to see orientation better)
-	f4 = WGLMakie.scatter(model["pos"], alpha=0.05, color="grey")
-	point3fs2 = [Point3f(p...) for p in eachrow(pos_retina)]
-	vectors2 = [Vec3f(o...) for o in eachrow(or_retina).*6]
-	lengths2 = norm.(vectors2)
-	arrows!(point3fs2, vectors2, color=lengths, arrowsize=0.3)
-	f4
-end
-
 # ╔═╡ c232c5d9-c3ce-40af-b3d0-523bc7baac54
 begin
 	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel.mat")
@@ -341,19 +334,15 @@ begin
 	# f_neweyemodel
 end
 
-# ╔═╡ 068c1627-6b0c-40ed-a4c9-47e047e8d715
-size(model["pos"])
-
 # ╔═╡ 6446689a-7b13-44c7-bb90-2cf065993585
 begin
 	lsi_eyemodel
 end
 
-# ╔═╡ 2ec8f8de-7720-43bf-a5d2-61203275d233
-labelsourceindices
+# ╔═╡ ac82f7aa-1fb2-41dd-9dda-d69122c8bb13
+# Improvements, further TODOs, other notes:
 
-# ╔═╡ e894fff3-6967-4e00-af60-5b6165388a57
-eyemodel["pos"][:,2]
+# TODO: add proper titles for each of the plots
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2838,35 +2827,28 @@ version = "3.5.0+0"
 # ╟─398cf988-b75d-45b4-b8c8-6bb2342682d0
 # ╟─850b1a81-c1fd-463a-abc9-e7484ef8555c
 # ╟─275c91de-8790-4a44-937b-a55a770dd9ee
-# ╠═2fde0e5e-7543-4149-bf74-9b65573cc462
+# ╟─2fde0e5e-7543-4149-bf74-9b65573cc462
 # ╠═09258399-2468-45f8-ba35-b244ffe21373
+# ╠═e69e6c73-a4f1-4efb-8ba7-b9e9e20305e4
+# ╟─5b85e5e3-13c4-4584-982e-044984d37ea0
 # ╠═55d651d4-feea-470f-8640-e542a4620c36
-# ╠═b6d9426a-1632-4fc7-a8eb-6fde0c60f0cb
-# ╠═f752763a-1814-4281-a6a7-225d30627677
-# ╠═788d3eb7-1b76-46bd-88ad-8d0f5c494586
-# ╠═91788d6d-69f1-428a-8db7-2f53be674bf9
-# ╠═5b85e5e3-13c4-4584-982e-044984d37ea0
-# ╠═3e3d9d93-30ee-48e0-854f-4d55cabd2ce9
-# ╠═92c6674f-834d-4966-888e-7432a7f0e0ef
-# ╠═505a5eb5-8fa2-4cf5-9641-29267d3c20b1
-# ╠═1f3da198-e3b4-4248-92da-c11049e8e217
-# ╠═6a210f28-891d-4bfb-a243-3c9ad8d3a3f0
-# ╠═6451ed6a-4137-466d-97a9-974ecc71fb5d
 # ╠═b4bd229e-2f51-4df3-adf2-3d566d4f9374
+# ╠═b6d9426a-1632-4fc7-a8eb-6fde0c60f0cb
+# ╠═91788d6d-69f1-428a-8db7-2f53be674bf9
+# ╠═3e3d9d93-30ee-48e0-854f-4d55cabd2ce9
+# ╠═6a210f28-891d-4bfb-a243-3c9ad8d3a3f0
+# ╠═0be94a3d-20aa-4a53-aea9-a99f7b57599d
+# ╠═0043e40c-f667-4838-9ef7-d987af94a4d1
+# ╠═6451ed6a-4137-466d-97a9-974ecc71fb5d
 # ╠═f2c830b0-5160-4de7-b32e-21fccf17c552
 # ╠═37412158-83a3-48b2-9384-17c6886c9ea3
 # ╠═45de688b-9495-4b3e-8308-d17887385562
 # ╠═f9c7afb8-4375-4d4e-a223-510a6ce6d3a5
 # ╠═984892c2-94ad-404b-8919-c116ac0c0339
 # ╠═b3573611-eeaa-468a-a320-baa5798e5276
-# ╠═5d962bc5-939d-424f-87ce-d51ecc12be85
-# ╠═0be94a3d-20aa-4a53-aea9-a99f7b57599d
-# ╠═0043e40c-f667-4838-9ef7-d987af94a4d1
 # ╠═c232c5d9-c3ce-40af-b3d0-523bc7baac54
 # ╠═b4fb0ea9-b124-4bb8-aaea-3d16a3201843
-# ╠═068c1627-6b0c-40ed-a4c9-47e047e8d715
 # ╠═6446689a-7b13-44c7-bb90-2cf065993585
-# ╠═2ec8f8de-7720-43bf-a5d2-61203275d233
-# ╠═e894fff3-6967-4e00-af60-5b6165388a57
+# ╠═ac82f7aa-1fb2-41dd-9dda-d69122c8bb13
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
