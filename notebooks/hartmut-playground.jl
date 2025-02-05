@@ -124,47 +124,13 @@ begin
 	end
 end
 
-# ╔═╡ b4bd229e-2f51-4df3-adf2-3d566d4f9374
-begin
-	# Miscellaneous code snippets
-	
-	# inspect orientation of a set of source points 
-	# model["orientation"][150:220,:]
-	
-	# inspect (unique) labels for one eye
-	# eyeleft_labels_unique = unique(model["label"][eyeleft_idx,:])
-end
-
-# ╔═╡ 91788d6d-69f1-428a-8db7-2f53be674bf9
-# fig_eyes
-
-# ╔═╡ 6a210f28-891d-4bfb-a243-3c9ad8d3a3f0
-WGLMakie.Page() 
-
-# ╔═╡ 45de688b-9495-4b3e-8308-d17887385562
-# mytopoplot = plot_topoplot(mydata, positions=pos2d)
-
-# ╔═╡ f9c7afb8-4375-4d4e-a223-510a6ce6d3a5
-# mytopoplot_sum = plot_topoplot(sumdata, positions=pos2d)
-
-# ╔═╡ 984892c2-94ad-404b-8919-c116ac0c0339
-# plot_topoplot(mag_cornea, positions=pos2d)
-
-# ╔═╡ b3573611-eeaa-468a-a320-baa5798e5276
-# WGLMakie.Page()
-
-# ╔═╡ c232c5d9-c3ce-40af-b3d0-523bc7baac54
-begin
-	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel.mat")
-end
-
 # ╔═╡ 2fde0e5e-7543-4149-bf74-9b65573cc462
 begin
 	# import large and small hartmut models
 	hart_large = read_new_hartmut(; p="HArtMuT_NYhead_large_fibers.mat");
 	hart_small = UnfoldSim.headmodel();
 	hartmut = hart_small; #hart_large # select the large or small model
-	model = eyemodel# hartmut.artefactual;
+	model = hartmut.artefactual;
 	# show the count of source points
 	println("\nSize of source points Dict (points x dimensions): ", size(model["pos"]))
 	model # view the structure of the model
@@ -218,10 +184,23 @@ begin
 				,"EyeCornea_left_"
 				,r"EyeRetina_Choroid_Sclera_right$"
 				,"EyeCornea_right_"
+				,"left" # for intermediate eyemodel; there are only eye points and no symmetric (leftright) sources
+				,"right" # ditto here
 			]
 	# TODO: add label search term for complete L/R eye (instead of separate retina/cornea) and one for all L&R/retina&cornea points
 	# TODO: add label to select only horizontal or only vertical oriented cornea sources? -> may not be necessary if all sources have only one orientation (namely towards the eye center) 
 	labelsourceindices = hart_indices_from_labels(model,labels) 
+end
+
+# ╔═╡ b4bd229e-2f51-4df3-adf2-3d566d4f9374
+begin
+	# Miscellaneous code snippets
+	
+	# inspect orientation of a set of source points 
+	# model["orientation"][150:220,:]
+	
+	# inspect (unique) labels for one eye
+	# eyeleft_labels_unique = unique(model["label"][eyeleft_idx,:])
 end
 
 # ╔═╡ b6d9426a-1632-4fc7-a8eb-6fde0c60f0cb
@@ -233,6 +212,9 @@ begin
 		labelsourceindices["EyeCornea_right_"] ; labelsourceindices[r"EyeRetina_Choroid_Sclera_right$"] 
 	]
 end
+
+# ╔═╡ 91788d6d-69f1-428a-8db7-2f53be674bf9
+# fig_eyes
 
 # ╔═╡ 3e3d9d93-30ee-48e0-854f-4d55cabd2ce9
 begin	
@@ -253,6 +235,9 @@ begin
 	WGLMakie.scatter!(eyeright_center)
 	WGLMakie.scatter!(eyeleft_center,color="red")
 end
+
+# ╔═╡ 6a210f28-891d-4bfb-a243-3c9ad8d3a3f0
+WGLMakie.Page() 
 
 # ╔═╡ 0be94a3d-20aa-4a53-aea9-a99f7b57599d
 begin
@@ -324,10 +309,27 @@ begin
 	mypos = pos2d
 end
 
+# ╔═╡ 45de688b-9495-4b3e-8308-d17887385562
+# mytopoplot = plot_topoplot(mydata, positions=pos2d)
+
+# ╔═╡ f9c7afb8-4375-4d4e-a223-510a6ce6d3a5
+# mytopoplot_sum = plot_topoplot(sumdata, positions=pos2d)
+
+# ╔═╡ 984892c2-94ad-404b-8919-c116ac0c0339
+# plot_topoplot(mag_cornea, positions=pos2d)
+
+# ╔═╡ b3573611-eeaa-468a-a320-baa5798e5276
+# WGLMakie.Page()
+
+# ╔═╡ c232c5d9-c3ce-40af-b3d0-523bc7baac54
+begin
+	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel.mat")
+end
+
 # ╔═╡ b4fb0ea9-b124-4bb8-aaea-3d16a3201843
 begin
 	lsi_eyemodel = hart_indices_from_labels(eyemodel,labels)
-	f_neweyemodel = WGLMakie.scatter(model["pos"], markersize=5,alpha=0.2, color="grey")
+	f_neweyemodel = WGLMakie.scatter(eyemodel["pos"], markersize=5,alpha=0.2, color="grey")
 	WGLMakie.scatter!(eyemodel["pos"])
 	WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Retina"],:])
 	WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Cornea"],:])
@@ -345,10 +347,13 @@ end
 # TODO: add proper titles for each of the plots
 
 # ╔═╡ 33f9438d-bdac-47c7-aa8b-509677196860
+# ╠═╡ disabled = true
+#=╠═╡
 begin
-	eyeright_orientations = model["orientation"][eyeright_idx,:]
-	[norm(eyeright_orientations[i, :]) for i in 1:size(eyeright_orientations, 1)]
+	orig_eyeright_orientations = model["orientation"][eyeright_idx,:]
+	[norm(orig_eyeright_orientations[i, :]) for i in 1:size(orig_eyeright_orientations, 1)]
 end
+  ╠═╡ =#
 
 # ╔═╡ 69b399c5-4360-4571-8524-92d1669805cf
 begin
@@ -359,7 +364,31 @@ begin
 end
 
 # ╔═╡ 41e1688c-8ed0-40ea-a31b-93faff95cf68
+begin
+	# now working with eyemodel 
 
+	eyemodel_left_idx = [ 
+		lsi_eyemodel["EyeCornea_left_"] ; lsi_eyemodel[r"EyeRetina_Choroid_Sclera_left$"] 
+	]
+	eyemodel_right_idx = [ 
+		lsi_eyemodel["EyeCornea_right_"] ; lsi_eyemodel[r"EyeRetina_Choroid_Sclera_right$"] 
+	]
+	
+	# positions of left and right eyeball points in eyemodel
+	em_positions_L = eyemodel["pos"][eyemodel_left_idx,:]
+	em_positions_R = eyemodel["pos"][eyemodel_right_idx,:]
+	
+	# find center
+	
+	# finding centroid using all eye points
+	eyeall_idx_L = lsi_eyemodel["left"]
+	eyeall_idx_R = lsi_eyemodel["right"] 
+	
+	eye_center_L = Statistics.mean(em_positions_L,dims=1)
+	eye_center_R = Statistics.mean(em_positions_R,dims=1)
+	eyeall_center_L = Statistics.mean(eyemodel["pos"][eyeall_idx_L,:],dims=1)
+	eyeall_center_R = Statistics.mean(eyemodel["pos"][eyeall_idx_R,:],dims=1)
+end
 
 # ╔═╡ bc69d158-ffb3-44eb-a70a-363c0044ff2e
 begin
@@ -367,24 +396,35 @@ begin
 	fig_eyemodel_orientations = WGLMakie.scatter(model["pos"], alpha=0.1, color="grey")
 	point3fs_o = [Point3f(p...) for p in eachrow(eyemodel["pos"])]
 	vectors_o = [Vec3f(o...) for o in eachrow(eyemodel["orientation"])]
-	arrows!(point3fs_o, vectors_o, arrowsize=0.3)
-	WGLMakie.scatter!(eyeleft_center,color="red")
+	arrows!(point3fs_o, vectors_o.*6, arrowsize=0.3)
+	WGLMakie.scatter!(eyeall_center_L,color="red")
+	WGLMakie.scatter!(eyeall_center_R,color="red")
+	WGLMakie.scatter!(eye_center_L,color="blue")
+	WGLMakie.scatter!(eye_center_R,color="blue")
 	fig_eyemodel_orientations
 end
 
 # ╔═╡ 4675145b-ca63-4fca-afbe-4933d3ab3019
+# ╠═╡ disabled = true
+#=╠═╡
 [norm(os[i, :]) for i in 1:size(os, 1)]
+  ╠═╡ =#
 
 # ╔═╡ 5fefaa42-dad1-4d74-a32b-13d20c8b6cda
 begin
 	eyemodel["orientation"] = zeros(size(eyemodel["pos"]))
-	eyemodel["orientation"][eyeright_idx,:] = calc_eye_orientations(eyeright_center, eyeright_positions)
-	eyemodel["orientation"][eyeleft_idx,:] = calc_eye_orientations(eyeleft_center, eyeleft_positions)
+	
+	eyemodel["orientation"][eyemodel_right_idx,:] = calc_eye_orientations(eyeall_center_R, em_positions_R)
+	
+	eyemodel["orientation"][eyemodel_left_idx,:] = calc_eye_orientations(eyeall_center_L, em_positions_L)
+	
 	eyemodel["orientation"]
 end
 
 # ╔═╡ 0ee5ea4c-5c58-4868-834f-94f7f6fa946d
-
+begin
+	vectors_o
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
