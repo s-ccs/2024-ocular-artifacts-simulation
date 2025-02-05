@@ -169,7 +169,7 @@ begin
 	# optional: plot points for a specific label (select value from UI spinner with @bind x)
 	WGLMakie.scatter!(model["pos"][findall(k->occursin(artefactlabels[x],k),model["label"][:]),:]);
 	println("currently inspecting label: ", artefactlabels[x])	
-	f
+	# f
 end
 
 # ╔═╡ 55d651d4-feea-470f-8640-e542a4620c36
@@ -211,6 +211,9 @@ begin
 	]
 end
 
+# ╔═╡ 91788d6d-69f1-428a-8db7-2f53be674bf9
+# fig_eyes
+
 # ╔═╡ 3e3d9d93-30ee-48e0-854f-4d55cabd2ce9
 begin	
 	# plot eye sources and L/R eye centroids
@@ -231,9 +234,6 @@ begin
 	WGLMakie.scatter!(eyeleft_center,color="red")
 end
 
-# ╔═╡ 91788d6d-69f1-428a-8db7-2f53be674bf9
-fig_eyes
-
 # ╔═╡ 6a210f28-891d-4bfb-a243-3c9ad8d3a3f0
 WGLMakie.Page() 
 
@@ -252,7 +252,7 @@ begin
 	vectors = [Vec3f(o...) for o in eachrow(or_cornea).*3]
 	arrows!(point3fs, vectors, arrowsize=0.3)
 
-	fig_cornea
+	# fig_cornea
 	
 
 	# # another option: forget about horizontal/vertical distinction and retina/cornea, just select positions and orientations of the right eye and plot those
@@ -271,7 +271,7 @@ begin
 	point3fs2 = [Point3f(p...) for p in eachrow(pos_retina)]
 	vectors2 = [Vec3f(o...) for o in eachrow(or_retina).*6]
 	arrows!(point3fs2, vectors2, arrowsize=0.3)
-	fig_retina
+	# fig_retina
 end
 
 # ╔═╡ 6451ed6a-4137-466d-97a9-974ecc71fb5d
@@ -343,6 +343,34 @@ end
 # Improvements, further TODOs, other notes:
 
 # TODO: add proper titles for each of the plots
+
+# ╔═╡ 33f9438d-bdac-47c7-aa8b-509677196860
+begin
+	eyeright_orientations = model["orientation"][eyeright_idx,:]
+	[norm(eyeright_orientations[i, :]) for i in 1:size(eyeright_orientations, 1)]
+end
+
+# ╔═╡ 69b399c5-4360-4571-8524-92d1669805cf
+begin
+	function calc_eye_orientations(center, positions)
+		orientation_vecs = center .- positions 
+		return orientation_vecs ./ norm.(eachrow(orientation_vecs))
+	end
+end
+
+# ╔═╡ bc69d158-ffb3-44eb-a70a-363c0044ff2e
+begin
+	os = calc_eye_orientations(eyeleft_center, eyeleft_positions)
+	fig_eyemodel_orientations = WGLMakie.scatter(model["pos"], alpha=0.1, color="grey")
+	point3fs_o = [Point3f(p...) for p in eachrow(eyeleft_positions)]
+	vectors_o = [Vec3f(o...) for o in eachrow(os)]
+	arrows!(point3fs_o, vectors_o, arrowsize=0.3)
+	WGLMakie.scatter!(eyeleft_center,color="red")
+	fig_eyemodel_orientations
+end
+
+# ╔═╡ 4675145b-ca63-4fca-afbe-4933d3ab3019
+[norm(os[i, :]) for i in 1:size(os, 1)]
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2850,5 +2878,9 @@ version = "3.5.0+0"
 # ╠═b4fb0ea9-b124-4bb8-aaea-3d16a3201843
 # ╠═6446689a-7b13-44c7-bb90-2cf065993585
 # ╠═ac82f7aa-1fb2-41dd-9dda-d69122c8bb13
+# ╠═33f9438d-bdac-47c7-aa8b-509677196860
+# ╠═69b399c5-4360-4571-8524-92d1669805cf
+# ╠═4675145b-ca63-4fca-afbe-4933d3ab3019
+# ╠═bc69d158-ffb3-44eb-a70a-363c0044ff2e
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
