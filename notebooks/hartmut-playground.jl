@@ -109,22 +109,16 @@ begin
         )
 		return headmodel
 	end
-
-	function hart_indices_from_labels(headmodel,labels=["dummy"])
-		labelsourceindices = Dict()
-		for l in labels
-			labelsourceindices[l] = findall(k->occursin(l,k),headmodel["label"][:])
-		end
-		return labelsourceindices
-	end
 end
 
 # ╔═╡ 850b1a81-c1fd-463a-abc9-e7484ef8555c
 begin
 	function read_eyemodel(;p = "HArtMuT_NYhead_extra_eyemodel.mat")
+		# read the intermediate eye model (only eye-points)
 		file = matopen(p);
 		hartmut = read(file,"eyemodel")
 		close(file)
+		hartmut["label"] = hartmut["labels"]
 		hartmut
 	end
 end
@@ -135,68 +129,67 @@ begin
 	hart_large = read_new_hartmut(; p="HArtMuT_NYhead_large_fibers.mat")
 	# model_large = hart_large.artefactual
 	hart_small = UnfoldSim.headmodel()
-	hartmut = hart_large #hart_small # select the large or small model
+	hartmut = hart_small #hart_large # select the large or small model
 	model = hartmut.artefactual
 end
 
-# ╔═╡ c232c5d9-c3ce-40af-b3d0-523bc7baac54
-eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel.mat")
+# ╔═╡ 275c91de-8790-4a44-937b-a55a770dd9ee
+begin
+	function hart_indices_from_labels(headmodel,labels=["dummy"]; plot=false)
+		# given a headmodel and a list of labels, return a Dict with the keys being the label and the values being the indices of sources with that label in the given model. plot=true additionally plots the points into an existing Makie figure. 
+		labelsourceindices = Dict()
+		for l in labels
+			labelsourceindices[l] = findall(k->occursin(l,k),headmodel["label"][:])
+			if plot
+				WGLMakie.scatter!(model["pos"][labelsourceindices[l],:]) #optional: plot these points into the existing figure
+			end
+			print(l, ": ", length(labelsourceindices[l])," points\n")
+		end
+		return labelsourceindices
+	end
+end
 
 # ╔═╡ 09258399-2468-45f8-ba35-b244ffe21373
 unique(model["label"]) # view all available labels in the model
 
 # ╔═╡ 55d651d4-feea-470f-8640-e542a4620c36
 begin
-	f = WGLMakie.scatter(model["pos"], alpha=0.2, color="grey") #, markersize = 10
+	f = WGLMakie.scatter(model["pos"], alpha=0.2, color="grey")
 	
-	# Search source labels for keyword 
-	# NOTE the property name is 'labels' in the original hartmut but 'label' in the UnfoldSim hartmut headmodel.
-	labels = [	"dummy"
-				# ,"Cornea"
-				# ,"Retina"
-				# ,"leftright" # all combined sources. currently this array item does not split between retina & cornea.
-				,r"EyeRetina_Choroid_Sclera_left$"
+	# Search source labels for specific keywords and find the indices of those sources
+	
+	# (NOTE the property name is 'labels' in the original hartmut file, but 'label' in the UnfoldSim hartmut headmodel.)
+	labels = [	"Cornea"
+				,"Retina"
+				# ,"leftright" # all combined sources. does not split between retina & cornea.
+				,r"EyeRetina_Choroid_Sclera_left$" # match the end of the search term, or else it also matches "leftright" sources.
 				,"EyeCornea_left_"
 				,r"EyeRetina_Choroid_Sclera_right$"
 				,"EyeCornea_right_"
 			]
-	labelsourceindices = Dict()
-	for l in labels
-		labelsourceindices[l] = findall(k->occursin(l,k),model["label"][:])
-		WGLMakie.scatter!(model["pos"][findall(k->occursin(l,k),model["label"][:]),:])
-		print(l, ": ", length(labelsourceindices[l])," points\n")
-	end
-	# lsi = hart_indices_from_labels(model_large,labels) 
+	labelsourceindices = hart_indices_from_labels(model,labels) 
 end
 
-# ╔═╡ 6d24eb05-61c7-40df-8c2e-05fa2d1f28ef
-labels
-# begin
+# ╔═╡ b6d9426a-1632-4fc7-a8eb-6fde0c60f0cb
+begin
+	# TODO: add label search term for complete L/R eye instead of separate retina/cornea
 
-# 	# Search source labels for keyword 
-# 	# NOTE the property name is 'labels' in the original hartmut but 'label' in the UnfoldSim hartmut headmodel.
-	
-# 	indices = []
-# 	# append!(indices
-# 	# 		,findall(k->occursin("Cornea",k),m["label"][:])
-# 	# 		,findall(k->occursin("Ocul",k),m["label"][:])
-# 	# 		,findall(k->occursin("Eye",k),m["label"][:])
-# 	# 		,findall(k->occursin("Retina",k),m["label"][:])
-# 	# )
-# 	# print corresponding labels/positions that match
-# 	m["label"][indices][:]
-# 	# m["pos"][indices,:]
-# 	indices
-	
-# end
+	eyeleft_idx = [ 
+		labelsourceindices["EyeCornea_left_"] ; labelsourceindices[r"EyeRetina_Choroid_Sclera_left$"] 
+	]
+	eyeright_idx = [ 
+		labelsourceindices["EyeCornea_right_"] ; labelsourceindices[r"EyeRetina_Choroid_Sclera_right$"] 
+	]
+end
 
 # ╔═╡ f752763a-1814-4281-a6a7-225d30627677
 f
 
-# ╔═╡ 2ed953c0-063a-401f-bd16-e0ed3a5d3598
+# ╔═╡ 788d3eb7-1b76-46bd-88ad-8d0f5c494586
 begin
-	# print(length(model_small["label"]),"\nlarge: ",length(model_large["label"]))
-	# labelsourceindices, lsi
+	# optional: plot points for a specific label (value from @bind x)
+	# WGLMakie.scatter!(model["pos"][findall(k->occursin(artefactlabels[x],k),model["label"][:]),:]);
+	# artefactlabels[x]
 end
 
 # ╔═╡ 5b85e5e3-13c4-4584-982e-044984d37ea0
@@ -210,31 +203,35 @@ begin
 	artefactlabels = unique(model["label"])
 	f2 = WGLMakie.scatter(model["pos"], alpha=0.025, color="grey");
 	#center of left and right eyeballs 
-	eyeleft_positions = [ model["pos"][findall(k->occursin("EyeCornea_left_",k), model["label"][:]),:] ; model["pos"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_left$",k), model["label"][:]),:] ]
-	
-	eyeright_positions = [ model["pos"][findall(k->occursin("EyeCornea_right_",k), model["label"][:]),:] ; model["pos"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_right$",k), model["label"][:]),:] ]
+	eyeleft_positions = [ 
+		model["pos"][labelsourceindices["EyeCornea_left_"],:] ; 
+		model["pos"][labelsourceindices[r"EyeRetina_Choroid_Sclera_left$"],:] 
+	]	
+	eyeright_positions = [
+		model["pos"][labelsourceindices["EyeCornea_right_"],:] ; 
+		model["pos"][labelsourceindices[r"EyeRetina_Choroid_Sclera_right$"],:] 
+	]
 	
 	# find center
 	eyeleft_center = Statistics.mean(eyeleft_positions,dims=1)
 	eyeright_center = Statistics.mean(eyeright_positions,dims=1)
 	
 	#plot eye positions & center
-	WGLMakie.scatter!(eyeleft_positions) 
+	WGLMakie.scatter!(eyeleft_positions)
+	WGLMakie.scatter!(eyeright_positions) 
 	WGLMakie.scatter!(eyeright_center)
 	WGLMakie.scatter!(eyeleft_center,color="red")
-	#WGLMakie.scatter!(Point(model["pos"][200]))
-
-	# plot points for a specific label (@bind x)
-	# WGLMakie.scatter!(model["pos"][findall(k->occursin(artefactlabels[x],k),model["label"][:]),:]);
-	# artefactlabels[x]
 end
 
 # ╔═╡ 91788d6d-69f1-428a-8db7-2f53be674bf9
-	f2
+f2
 
 # ╔═╡ 92c6674f-834d-4966-888e-7432a7f0e0ef
-eyeleft_labels = [ model["label"][findall(k->occursin("EyeCornea_left_",k), model["label"][:]),:] ; model["label"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_left$",k), model["label"][:]),:] ]
-
+begin
+	eyeleft_labels = [ model["label"][labelsourceindices["EyeCornea_left_"]] 
+		; model["label"][labelsourceindices[r"EyeRetina_Choroid_Sclera_left$"] ]
+	]
+end
 
 # ╔═╡ 505a5eb5-8fa2-4cf5-9641-29267d3c20b1
 print(unique(eyeleft_labels))
@@ -243,7 +240,7 @@ print(unique(eyeleft_labels))
 artefactlabels   
 
 # ╔═╡ 6a210f28-891d-4bfb-a243-3c9ad8d3a3f0
-# WGLMakie.Page() 
+WGLMakie.Page() 
 
 # ╔═╡ 6451ed6a-4137-466d-97a9-974ecc71fb5d
 begin
@@ -282,48 +279,22 @@ begin
 end
 
 # ╔═╡ 45de688b-9495-4b3e-8308-d17887385562
-mytopoplot = plot_topoplot(mydata, positions=pos2d)
+# mytopoplot = plot_topoplot(mydata, positions=pos2d)
 
 # ╔═╡ f9c7afb8-4375-4d4e-a223-510a6ce6d3a5
-mytopoplot_sum = plot_topoplot(sumdata, positions=pos2d)
+# mytopoplot_sum = plot_topoplot(sumdata, positions=pos2d)
 
 # ╔═╡ 984892c2-94ad-404b-8919-c116ac0c0339
-plot_topoplot(mag_cornea, positions=pos2d)
+# plot_topoplot(mag_cornea, positions=pos2d)
 
 # ╔═╡ b3573611-eeaa-468a-a320-baa5798e5276
 # WGLMakie.Page()
 
-# ╔═╡ d511f3de-be25-4c33-91e7-7af1b21b1eda
-# begin
-# dat, positions = TopoPlots.example_data();
-# plot_topoplot(dat[1:4, 340, 1]; positions = positions[1:4])
-# end
-
-# ╔═╡ 9bc8b00e-7af6-414b-90d6-5d585afdb1e4
-# begin
-# 	typeof(dat[1:4, 340, 1]), typeof(mydata), typeof(positions),typeof(pos2d) 
-# end
-
-# ╔═╡ 3c0b48f9-d765-431d-ac74-7e2574a2c1dd
-# Plots.plot(f,f2,mytopoplot,layout=(1,3))
-
-# ╔═╡ 4ec1747e-7851-4708-9492-6b48c235ee86
-# begin
-# 	fig = Figure()
-# 	ga = fig[1, 1] = GridLayout()
-# 	gb = fig[1, 2] = GridLayout()
-# 	gc = fig[2, 1] = GridLayout()
-# 	gd = fig[2, 2] = GridLayout()
-# end
-
-
 # ╔═╡ 5d962bc5-939d-424f-87ce-d51ecc12be85
 begin
-	# plot_topoplot!(ga, LinearAlgebra.convert(Vector{Float32},mydata); positions=pos2d)
-	# model["label"]
 	eyeright_orientations = [ model["orientation"][findall(k->occursin("EyeCornea_right_",k), model["label"][:]),:] ; model["orientation"][findall(k->occursin(r"EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:] ]
 
-	# corna: horizontal as well as vertical. Selecting horizontal for now
+	# cornea: horizontal as well as vertical. Selecting horizontal for now
 	pos_cornea = model["pos"][findall(k->occursin("EyeCornea_right_horizontal",k), model["label"][:]),:]
 	or_cornea = model["orientation"][findall(k->occursin("EyeCornea_right_horizontal",k), model["label"][:]),:]
 
@@ -334,30 +305,55 @@ end
 
 # ╔═╡ 0be94a3d-20aa-4a53-aea9-a99f7b57599d
 begin
-	# plot orientations of source points
-	# arrows(,Vec3f(model["orientation"]))
-	# point3fs = [Point3f(p...) for p in eachrow(model["pos"])]
-	# vectors = [Vec3f(o...) for o in eachrow(model["orientation"])]
-	# # map(p -> p[1],model["pos"])
-	# model["orientation"]
+	# plot cornea sources - position & orientation (exaggerated arrow lengths to see orientation better)
 	f3 = WGLMakie.scatter(model["pos"], alpha=0.1, color="grey")
 	point3fs = [Point3f(p...) for p in eachrow(pos_cornea)]
 	# f3 = surface(pos_cornea, alpha=0.1)
 	vectors = [Vec3f(o...) for o in eachrow(or_cornea).*3]
 	lengths = norm.(vectors)
 	arrows!(point3fs, vectors, color=lengths, arrowsize=0.3)
-	f3
+	# f3
 end
 
 # ╔═╡ 0043e40c-f667-4838-9ef7-d987af94a4d1
 begin
-	f4 = WGLMakie.scatter(model["pos"], alpha=0.1, color="grey")
+	# plot retina sources - position & orientation (exaggerated arrow lengths to see orientation better)
+	f4 = WGLMakie.scatter(model["pos"], alpha=0.05, color="grey")
 	point3fs2 = [Point3f(p...) for p in eachrow(pos_retina)]
 	vectors2 = [Vec3f(o...) for o in eachrow(or_retina).*6]
 	lengths2 = norm.(vectors2)
 	arrows!(point3fs2, vectors2, color=lengths, arrowsize=0.3)
 	f4
 end
+
+# ╔═╡ c232c5d9-c3ce-40af-b3d0-523bc7baac54
+begin
+	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel.mat")
+end
+
+# ╔═╡ b4fb0ea9-b124-4bb8-aaea-3d16a3201843
+begin
+	lsi_eyemodel = hart_indices_from_labels(eyemodel,labels)
+	f_neweyemodel = WGLMakie.scatter(model["pos"], markersize=5,alpha=0.2, color="grey")
+	WGLMakie.scatter!(eyemodel["pos"])
+	WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Retina"],:])
+	WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Cornea"],:])
+	# f_neweyemodel
+end
+
+# ╔═╡ 068c1627-6b0c-40ed-a4c9-47e047e8d715
+size(model["pos"])
+
+# ╔═╡ 6446689a-7b13-44c7-bb90-2cf065993585
+begin
+	lsi_eyemodel
+end
+
+# ╔═╡ 2ec8f8de-7720-43bf-a5d2-61203275d233
+labelsourceindices
+
+# ╔═╡ e894fff3-6967-4e00-af60-5b6165388a57
+eyemodel["pos"][:,2]
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2839,15 +2835,15 @@ version = "3.5.0+0"
 # ╔═╡ Cell order:
 # ╠═58cfd854-4f0c-11ee-33d6-71433b23db47
 # ╠═535a3124-0658-4e3b-8245-3c023c0e5f1d
-# ╠═398cf988-b75d-45b4-b8c8-6bb2342682d0
-# ╠═850b1a81-c1fd-463a-abc9-e7484ef8555c
+# ╟─398cf988-b75d-45b4-b8c8-6bb2342682d0
+# ╟─850b1a81-c1fd-463a-abc9-e7484ef8555c
+# ╟─275c91de-8790-4a44-937b-a55a770dd9ee
 # ╠═2fde0e5e-7543-4149-bf74-9b65573cc462
-# ╠═c232c5d9-c3ce-40af-b3d0-523bc7baac54
 # ╠═09258399-2468-45f8-ba35-b244ffe21373
-# ╠═6d24eb05-61c7-40df-8c2e-05fa2d1f28ef
 # ╠═55d651d4-feea-470f-8640-e542a4620c36
+# ╠═b6d9426a-1632-4fc7-a8eb-6fde0c60f0cb
 # ╠═f752763a-1814-4281-a6a7-225d30627677
-# ╠═2ed953c0-063a-401f-bd16-e0ed3a5d3598
+# ╠═788d3eb7-1b76-46bd-88ad-8d0f5c494586
 # ╠═91788d6d-69f1-428a-8db7-2f53be674bf9
 # ╠═5b85e5e3-13c4-4584-982e-044984d37ea0
 # ╠═3e3d9d93-30ee-48e0-854f-4d55cabd2ce9
@@ -2863,12 +2859,14 @@ version = "3.5.0+0"
 # ╠═f9c7afb8-4375-4d4e-a223-510a6ce6d3a5
 # ╠═984892c2-94ad-404b-8919-c116ac0c0339
 # ╠═b3573611-eeaa-468a-a320-baa5798e5276
-# ╠═d511f3de-be25-4c33-91e7-7af1b21b1eda
-# ╠═9bc8b00e-7af6-414b-90d6-5d585afdb1e4
-# ╠═3c0b48f9-d765-431d-ac74-7e2574a2c1dd
-# ╠═4ec1747e-7851-4708-9492-6b48c235ee86
 # ╠═5d962bc5-939d-424f-87ce-d51ecc12be85
-# ╟─0be94a3d-20aa-4a53-aea9-a99f7b57599d
+# ╠═0be94a3d-20aa-4a53-aea9-a99f7b57599d
 # ╠═0043e40c-f667-4838-9ef7-d987af94a4d1
+# ╠═c232c5d9-c3ce-40af-b3d0-523bc7baac54
+# ╠═b4fb0ea9-b124-4bb8-aaea-3d16a3201843
+# ╠═068c1627-6b0c-40ed-a4c9-47e047e8d715
+# ╠═6446689a-7b13-44c7-bb90-2cf065993585
+# ╠═2ec8f8de-7720-43bf-a5d2-61203275d233
+# ╠═e894fff3-6967-4e00-af60-5b6165388a57
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
