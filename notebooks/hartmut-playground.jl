@@ -90,6 +90,7 @@ begin
         ## getting index of these channels from imported hartmut model data, exclude them in the topoplot
         remove_indices =
             findall(l -> l ∈ weirdchan, h["electrodes"] |> read |> x -> x["label"])
+		print(remove_indices)
 
         function sel_chan(x)
 
@@ -213,9 +214,6 @@ begin
 	]
 end
 
-# ╔═╡ 91788d6d-69f1-428a-8db7-2f53be674bf9
-# fig_eyes
-
 # ╔═╡ 3e3d9d93-30ee-48e0-854f-4d55cabd2ce9
 begin	
 	# plot eye sources and L/R eye centroids
@@ -237,7 +235,8 @@ begin
 end
 
 # ╔═╡ 6a210f28-891d-4bfb-a243-3c9ad8d3a3f0
-WGLMakie.Page() 
+# WGLMakie.Page() 
+eyeright_positions
 
 # ╔═╡ 0be94a3d-20aa-4a53-aea9-a99f7b57599d
 begin
@@ -279,7 +278,7 @@ end
 # ╔═╡ 6451ed6a-4137-466d-97a9-974ecc71fb5d
 begin
 	datapoint = randn(StableRNG(1))
-	model_magnitude = magnitude(model["leadfield"]); ""
+	model_magnitude = magnitude(model["leadfield"])
 end
 
 # ╔═╡ f2c830b0-5160-4de7-b32e-21fccf17c552
@@ -305,12 +304,13 @@ begin
 	pos3d = hartmut.electrodes["pos"];
 	pos2d = to_positions(pos3d')
 	pos2d = [Point2f(p[1] + 0.5, p[2] + 0.5) for p in pos2d]; 
-	
-	mypos = pos2d
 end
 
 # ╔═╡ 45de688b-9495-4b3e-8308-d17887385562
 # mytopoplot = plot_topoplot(mydata, positions=pos2d)
+
+# ╔═╡ fefca95b-f7d8-4bcc-86db-7d0cb7394ecc
+
 
 # ╔═╡ f9c7afb8-4375-4d4e-a223-510a6ce6d3a5
 # mytopoplot_sum = plot_topoplot(sumdata, positions=pos2d)
@@ -323,7 +323,16 @@ end
 
 # ╔═╡ c232c5d9-c3ce-40af-b3d0-523bc7baac54
 begin
-	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel.mat")
+	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_new.mat")
+	remove_indices = [164, 165, 166, 167]# since eyemodel structure doesn't exactly correspond to the main hartmut mat structure expected by read_new_hartmut function, just get the indices of the electrodes that it drops 
+	eyemodel["leadfield"] = eyemodel["leadfield"][Not(remove_indices), :, :] .* 10e3
+	# eyemodel["pos"] = eyemodel["pos"][Not(remove_indices), :, :]
+end
+
+# ╔═╡ ca97a53d-95f7-4536-8606-a579a438c6d0
+begin
+	# em_withmusclemethod = read_new_hartmut(; p="HArtMuT_NYhead_extra_eyemodel.mat");
+	size(eyemodel["leadfield"]), size(eyemodel["pos"]), size(eyemodel["orientation"])
 end
 
 # ╔═╡ b4fb0ea9-b124-4bb8-aaea-3d16a3201843
@@ -335,6 +344,9 @@ begin
 	WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Cornea"],:])
 	# f_neweyemodel
 end
+
+# ╔═╡ 37805a58-5c65-41f9-8c74-b7e507e5948d
+
 
 # ╔═╡ 6446689a-7b13-44c7-bb90-2cf065993585
 begin
@@ -357,7 +369,7 @@ end
 
 # ╔═╡ 69b399c5-4360-4571-8524-92d1669805cf
 begin
-	function calc_eye_orientations(center, positions)
+	function calc_orientations(center, positions)
 		orientation_vecs = center .- positions 
 		return orientation_vecs ./ norm.(eachrow(orientation_vecs))
 	end
@@ -374,7 +386,7 @@ begin
 		lsi_eyemodel["EyeCornea_right_"] ; lsi_eyemodel[r"EyeRetina_Choroid_Sclera_right$"] 
 	]
 	
-	# positions of left and right eyeball points in eyemodel
+	# positions of left and right Retina&Cornea points in eyemodel
 	em_positions_L = eyemodel["pos"][eyemodel_left_idx,:]
 	em_positions_R = eyemodel["pos"][eyemodel_right_idx,:]
 	
@@ -390,17 +402,27 @@ begin
 	eyeall_center_R = Statistics.mean(eyemodel["pos"][eyeall_idx_R,:],dims=1)
 end
 
+# ╔═╡ 20f1399d-56ed-48b9-be79-decc9d18f35c
+eye_center_L, eyeall_center_L
+
+# ╔═╡ 91788d6d-69f1-428a-8db7-2f53be674bf9
+fig_eyes
+
+# ╔═╡ 3553c7ab-6be7-4525-965a-e037543083a3
+em_sim_idx = [eyemodel_left_idx; eyemodel_right_idx]
+
 # ╔═╡ bc69d158-ffb3-44eb-a70a-363c0044ff2e
 begin
-	os = calc_eye_orientations(eyeleft_center, eyeleft_positions)
-	fig_eyemodel_orientations = WGLMakie.scatter(model["pos"], alpha=0.1, color="grey")
+	os = calc_orientations(eyeleft_center, eyeleft_positions)
+	fig_eyemodel_orientations = WGLMakie.scatter([0 0 0], alpha=0.025, color="grey") #model["pos"]
 	point3fs_o = [Point3f(p...) for p in eachrow(eyemodel["pos"])]
 	vectors_o = [Vec3f(o...) for o in eachrow(eyemodel["orientation"])]
-	arrows!(point3fs_o, vectors_o.*6, arrowsize=0.3)
+	arrows!(point3fs_o, vectors_o.*6, arrowsize=0.7)
+	WGLMakie.scatter!(eyemodel["pos"][em_sim_idx,:])
 	WGLMakie.scatter!(eyeall_center_L,color="red")
 	WGLMakie.scatter!(eyeall_center_R,color="red")
-	WGLMakie.scatter!(eye_center_L,color="blue")
-	WGLMakie.scatter!(eye_center_R,color="blue")
+	WGLMakie.scatter!(eye_center_L,color="pink")
+	WGLMakie.scatter!(eye_center_R,color="pink")
 	fig_eyemodel_orientations
 end
 
@@ -414,16 +436,84 @@ end
 begin
 	eyemodel["orientation"] = zeros(size(eyemodel["pos"]))
 	
-	eyemodel["orientation"][eyemodel_right_idx,:] = calc_eye_orientations(eyeall_center_R, em_positions_R)
+	eyemodel["orientation"][eyemodel_right_idx,:] = calc_orientations(eyeall_center_R, em_positions_R)
 	
-	eyemodel["orientation"][eyemodel_left_idx,:] = calc_eye_orientations(eyeall_center_L, em_positions_L)
+	eyemodel["orientation"][eyemodel_left_idx,:] = calc_orientations(eyeall_center_L, em_positions_L)
+
+	eyemodel["orientation"][lsi_eyemodel["Cornea"],:] = eyemodel["orientation"][lsi_eyemodel["Cornea"],:] .* -1 # cornea and retina have opposite orientations: cornea away from the center, so reverse the calculated towards-center orientations.
 	
 	eyemodel["orientation"]
 end
 
 # ╔═╡ 0ee5ea4c-5c58-4868-834f-94f7f6fa946d
 begin
-	vectors_o
+	mag_eyemodel = magnitude(eyemodel["leadfield"],eyemodel["orientation"])
+	mag_eyemodel_retina = sum(mag_eyemodel[:,ii] for ii in lsi_eyemodel["Retina"])
+	mag_eyemodel_cornea = sum(mag_eyemodel[:,ii] for ii in lsi_eyemodel["Cornea"])
+	weights = [1 1]
+	weighted_difference_LF = mag_eyemodel_cornea.*weights[1] + mag_eyemodel_retina.*weights[2] 
+end
+
+# ╔═╡ ce91b231-b4c5-4b12-9331-7a3f46de1fde
+begin
+	plot_topoplot(weighted_difference_LF, positions=pos2d
+		# , visual = (; enlarge = 0.5, label_scatter = true),
+	)
+end
+
+# ╔═╡ e244557e-fb96-46b0-970f-13894709ddaa
+begin
+	f_topopolots_eyesim = Figure()
+	plot_topoplot!(
+		f_topopolots_eyesim[1,1], weighted_difference_LF, positions=pos2d)
+	plot_topoplot!(
+		f_topopolots_eyesim[2,1], mag_eyemodel_cornea, positions=pos2d)
+	plot_topoplot!(
+		f_topopolots_eyesim[2,2], mag_eyemodel_retina, positions=pos2d)
+	# for (label, layout) in zip(["Weighted cornea retina" * string(weights), "Cornea", "Retina"], [f_topopolots_eyesim[1,1], f_topopolots_eyesim[2,1],f_topopolots_eyesim[3,1]])
+ #   		Label(layout[1, 1, TopRight()], label,
+	#         fontsize = 10,
+	#         font = :bold,
+	#         # padding = (0, 5, 5, 0),
+	#         # halign = :right
+	# 	)
+	# end
+	f_topopolots_eyesim
+end
+
+# ╔═╡ 0e05c45d-f81b-4e7e-b2c2-cbfef4b8633c
+begin
+	f_topopolots_eyesim2 = Figure()
+	plot_topoplot!(
+		f_topopolots_eyesim2[1,1], weighted_difference_LF, positions=pos2d, visual = (; enlarge = 0.65, label_scatter = true),)
+	plot_topoplot!(
+		f_topopolots_eyesim2[2,1], mag_eyemodel_cornea, positions=pos2d, visual = (; enlarge = 0.65, label_scatter = false),)
+	plot_topoplot!(
+		f_topopolots_eyesim2[2,2], mag_eyemodel_retina, positions=pos2d, visual = (; enlarge = 0.65, label_scatter = false),)
+	f_topopolots_eyesim2
+end
+
+# ╔═╡ 608308ca-a54b-42f2-ad18-6012cf897104
+lsi_eyemodel["Retina"], lsi_eyemodel["Cornea"]
+
+# ╔═╡ c0adb287-b1e2-4ebd-9fe0-cc9e25f441bd
+diff(eyemodel["pos"],dims=1), mean(diff(eyemodel["pos"],dims=1),dims=1), eyemodel["pos"]
+
+# ╔═╡ 0eb02357-b908-445d-8329-949cd6a4de9c
+eyemodel["pos"]
+
+# ╔═╡ c36bca30-f096-420b-97f8-8d2b4935d7f2
+begin
+	diff(model["pos"][[eyeleft_idx; eyeright_idx],:],dims=1), mean(diff(model["pos"][[eyeleft_idx; eyeright_idx],:],dims=1),dims=1), model["pos"][[eyeleft_idx; eyeright_idx],:]
+end
+
+# ╔═╡ fefafce9-115c-49c9-9000-9427a5d69658
+begin
+	# plot only retina and cornea, new eyemodel (~2025-02-05) and old model (original hartmut small model)
+	f_oldplusnew_eyes =	WGLMakie.scatter(eyemodel["pos"][em_sim_idx,:])
+	WGLMakie.scatter!([eyeleft_positions; eyeright_positions], color="orange")
+	# WGLMakie.scatter!(eyeright_positions) 
+	f_oldplusnew_eyes
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -2906,8 +2996,8 @@ version = "3.5.0+0"
 # ╔═╡ Cell order:
 # ╠═58cfd854-4f0c-11ee-33d6-71433b23db47
 # ╠═535a3124-0658-4e3b-8245-3c023c0e5f1d
-# ╟─398cf988-b75d-45b4-b8c8-6bb2342682d0
-# ╟─850b1a81-c1fd-463a-abc9-e7484ef8555c
+# ╠═398cf988-b75d-45b4-b8c8-6bb2342682d0
+# ╠═850b1a81-c1fd-463a-abc9-e7484ef8555c
 # ╟─275c91de-8790-4a44-937b-a55a770dd9ee
 # ╠═2fde0e5e-7543-4149-bf74-9b65573cc462
 # ╠═09258399-2468-45f8-ba35-b244ffe21373
@@ -2916,7 +3006,6 @@ version = "3.5.0+0"
 # ╠═55d651d4-feea-470f-8640-e542a4620c36
 # ╠═b4bd229e-2f51-4df3-adf2-3d566d4f9374
 # ╠═b6d9426a-1632-4fc7-a8eb-6fde0c60f0cb
-# ╠═91788d6d-69f1-428a-8db7-2f53be674bf9
 # ╠═3e3d9d93-30ee-48e0-854f-4d55cabd2ce9
 # ╠═6a210f28-891d-4bfb-a243-3c9ad8d3a3f0
 # ╠═0be94a3d-20aa-4a53-aea9-a99f7b57599d
@@ -2925,19 +3014,33 @@ version = "3.5.0+0"
 # ╠═f2c830b0-5160-4de7-b32e-21fccf17c552
 # ╠═37412158-83a3-48b2-9384-17c6886c9ea3
 # ╠═45de688b-9495-4b3e-8308-d17887385562
+# ╠═fefca95b-f7d8-4bcc-86db-7d0cb7394ecc
 # ╠═f9c7afb8-4375-4d4e-a223-510a6ce6d3a5
 # ╠═984892c2-94ad-404b-8919-c116ac0c0339
 # ╠═b3573611-eeaa-468a-a320-baa5798e5276
 # ╠═c232c5d9-c3ce-40af-b3d0-523bc7baac54
+# ╠═ca97a53d-95f7-4536-8606-a579a438c6d0
 # ╠═b4fb0ea9-b124-4bb8-aaea-3d16a3201843
+# ╠═37805a58-5c65-41f9-8c74-b7e507e5948d
 # ╠═6446689a-7b13-44c7-bb90-2cf065993585
 # ╠═ac82f7aa-1fb2-41dd-9dda-d69122c8bb13
 # ╠═33f9438d-bdac-47c7-aa8b-509677196860
 # ╠═69b399c5-4360-4571-8524-92d1669805cf
 # ╠═4675145b-ca63-4fca-afbe-4933d3ab3019
 # ╠═41e1688c-8ed0-40ea-a31b-93faff95cf68
+# ╠═20f1399d-56ed-48b9-be79-decc9d18f35c
+# ╠═91788d6d-69f1-428a-8db7-2f53be674bf9
 # ╠═bc69d158-ffb3-44eb-a70a-363c0044ff2e
+# ╠═3553c7ab-6be7-4525-965a-e037543083a3
 # ╠═5fefaa42-dad1-4d74-a32b-13d20c8b6cda
 # ╠═0ee5ea4c-5c58-4868-834f-94f7f6fa946d
+# ╠═ce91b231-b4c5-4b12-9331-7a3f46de1fde
+# ╟─e244557e-fb96-46b0-970f-13894709ddaa
+# ╠═0e05c45d-f81b-4e7e-b2c2-cbfef4b8633c
+# ╠═608308ca-a54b-42f2-ad18-6012cf897104
+# ╠═c0adb287-b1e2-4ebd-9fe0-cc9e25f441bd
+# ╠═0eb02357-b908-445d-8329-949cd6a4de9c
+# ╠═c36bca30-f096-420b-97f8-8d2b4935d7f2
+# ╠═fefafce9-115c-49c9-9000-9427a5d69658
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
