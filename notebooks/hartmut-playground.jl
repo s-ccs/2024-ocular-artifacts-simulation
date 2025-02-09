@@ -432,6 +432,24 @@ begin
 	f_oldplusnew_eyes
 end
 
+# ╔═╡ 8e81fcfb-6b1b-4ccc-be47-d01f3a11d47d
+begin
+	function angle(a,b) 
+		return acosd.(dot(a, b)/(norm(a)*norm(b)))
+		# acosd(clamp(vec1⋅vec2/(norm(vec1)*norm(vec2)), -1, 1)) # ref: https://discourse.julialang.org/t/how-to-find-angle-between-two-vectors/68149 - or do we just use AngleBetweenVectors.jl?
+	end
+end
+
+# ╔═╡ 76892093-ef45-449f-9c60-62eef4fd091f
+angle([0.0000001 1 0], [0 1 0])
+
+# ╔═╡ 294e27bb-627c-46c6-8b6f-c58bc441607e
+begin
+	angles = mapslices(x->angle(x,gazedir_R),eyemodel["pos"][em_sim_idx,:],dims=2)
+	# maximum(angles), minimum(angles)
+	# angles.<30
+end
+
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
