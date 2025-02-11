@@ -129,7 +129,7 @@ end
 # ╔═╡ 2fde0e5e-7543-4149-bf74-9b65573cc462
 begin
 	# import large and small hartmut models
-	hart_large = read_new_hartmut(; p="HArtMuT_NYhead_large_fibers.mat");
+	# hart_large = read_new_hartmut(; p="HArtMuT_NYhead_large_fibers.mat");
 	hart_small = UnfoldSim.headmodel();
 	hartmut = hart_small; #hart_large # select the large or small model
 	model = hartmut.artefactual;
@@ -286,7 +286,7 @@ end
 
 # ╔═╡ c232c5d9-c3ce-40af-b3d0-523bc7baac54
 begin
-	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_new.mat")
+	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_new_2025-02-10.mat")
 	remove_indices = [164, 165, 166, 167] # since eyemodel structure doesn't exactly correspond to the main hartmut mat structure expected by read_new_hartmut function, just get the indices of the electrodes that it drops & drop the same indices from eyemodel directly 
 	eyemodel["leadfield"] = eyemodel["leadfield"][Not(remove_indices), :, :] .* 10e3
 	""
@@ -299,9 +299,9 @@ end
 begin
 	lsi_eyemodel = hart_indices_from_labels(eyemodel,labels)
 	f_neweyemodel = WGLMakie.scatter(eyemodel["pos"], markersize=5,alpha=0.2, color="grey")
-	WGLMakie.scatter!(eyemodel["pos"])
-	WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Retina"],:])
-	WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Cornea"],:])
+	# WGLMakie.scatter!(eyemodel["pos"])
+	WGLMakie.scatter!(eyemodel["pos"][Not(lsi_eyemodel["Cornea"]),:])
+	# WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Cornea"],:])
 	# f_neweyemodel
 end
 
@@ -351,10 +351,10 @@ begin
 	# finding centroid using all eye points
 	eyeall_idx_L = lsi_eyemodel["left"]
 	eyeall_idx_R = lsi_eyemodel["right"] 
-	eyeall_center_L = Statistics.mean(eyemodel["pos"][eyeall_idx_L,:],dims=1)
-	eyeall_center_R = Statistics.mean(eyemodel["pos"][eyeall_idx_R,:],dims=1)
+	eyeall_center_L = Statistics.mean(eyemodel["pos"][eyeall_idx_L,:],dims=1) # [ -30.972  56.9449  -37.1539] from all eyepoints in model 2025-02-10, including inside-eye points (aqueous, vitreous,...)
+	eyeall_center_R = Statistics.mean(eyemodel["pos"][eyeall_idx_R,:],dims=1) # [31.986  56.5737  -37.1178] from all eyepoints in model 2025-02-10, including inside-eye points (aqueous, vitreous,...)
 
-	# finding mean cornea point and approximate gaze direction
+	# finding mean cornea point and approximate gaze direction (as mean of cornea orientations)
 	cornea_center_R = Statistics.mean(eyemodel["pos"][lsi_eyemodel["EyeCornea_right_"],:],dims=1)
 	cornea_center_L = Statistics.mean(eyemodel["pos"][lsi_eyemodel["EyeCornea_left_"],:],dims=1)
 	gazedir_R = mean(eyemodel["orientation"][lsi_eyemodel["EyeCornea_right_"],:], dims=1).*10
@@ -397,7 +397,7 @@ begin
 		f_topopolots_eyesim[2,1], mag_eyemodel_cornea, positions=pos2d)
 	plot_topoplot!(
 		f_topopolots_eyesim[2,2], mag_eyemodel_retina, positions=pos2d)
-	f_topopolots_eyesim
+	# f_topopolots_eyesim
 end
 
 # ╔═╡ 0e05c45d-f81b-4e7e-b2c2-cbfef4b8633c
@@ -414,17 +414,6 @@ begin
 	f_topopolots_eyesim2
 end
 
-# ╔═╡ fefafce9-115c-49c9-9000-9427a5d69658
-begin
-	# plot only retina and cornea, new eyemodel (~2025-02-05) and old model (original hartmut small model)
-	f_oldplusnew_eyes =	WGLMakie.scatter(eyemodel["pos"][em_sim_idx,:])
-	WGLMakie.scatter!([eyeleft_positions; eyeright_positions], color="orange")
-	
-	WGLMakie.scatter!(cornea_center_R,color="red", markersize=30)
-	WGLMakie.scatter!(cornea_center_L,color="red", markersize=20)
-	f_oldplusnew_eyes
-end
-
 # ╔═╡ 8e81fcfb-6b1b-4ccc-be47-d01f3a11d47d
 begin
 	function angle(a,b) 
@@ -437,9 +426,109 @@ angle([100 0 0], [0 100 0]) # sanity check for angle function
 
 # ╔═╡ 294e27bb-627c-46c6-8b6f-c58bc441607e
 begin
-	angles = mapslices(x->angle(x,gazedir_R),eyemodel["pos"][em_sim_idx,:],dims=2)
+	gazedirection = [0. 1. 0.] # use Floats: angle calculation function gives errors if we use integers.
+	
+	angles = mapslices(x->angle(x,gazedir_model_avg),eyemodel["orientation"][em_sim_idx,:],dims=2)
+	# angles_R = mapslices(x->AngleBetweenVectors.angle(x,gazedir_R),eyemodel["pos"][em_sim_idx,:],dims=2)
 	# maximum(angles), minimum(angles)
 	# angles.<30
+	an = mapslices(x -> rad2deg(AngleBetweenVectors.angle(vec(x),vec(gazedir_model_avg))),eyemodel["orientation"][em_sim_idx,:],dims=2)
+end
+
+# ╔═╡ bc69d158-ffb3-44eb-a70a-363c0044ff2e
+begin
+	# plot eyemodel sources with calculated orientations; centroids; approx. gaze direction.
+	
+	fig_eyemodel_orientations = WGLMakie.scatter([0 0 0], alpha=0.025, color="grey")
+	
+	point3fs_o = [Point3f(p...) for p in eachrow([eyemodel["pos"];cornea_center_R;cornea_center_L;[0 0 0];[0 75 0]])]
+	vectors_o = [Vec3f(o...) for o in eachrow([eyemodel["orientation"];gazedir_R;gazedir_L;gazedirection.*10;gazedir_model_avg.*10])]
+	arrows!(point3fs_o, vectors_o.*6, arrowsize=0.7)
+	
+	WGLMakie.scatter!(eyemodel["pos"][em_sim_idx,:])
+	# red points - centroid considering ALL eye sources
+	WGLMakie.scatter!(eyeall_center_L,color="red")
+	WGLMakie.scatter!(eyeall_center_R,color="red")
+	# pink points - centroid using just retina&cornea sources
+	WGLMakie.scatter!(eye_center_L,color="pink")
+	WGLMakie.scatter!(eye_center_R,color="pink")
+	fig_eyemodel_orientations
+end
+
+# ╔═╡ fefafce9-115c-49c9-9000-9427a5d69658
+begin
+	# plot only retina and cornea, new eyemodel
+	
+	f_new_eyes,ax,h = WGLMakie.scatter(eyemodel["pos"][em_sim_idx,:],color=angles[:]) 
+	# color=eyeweights[em_sim_idx]) to colour the points based on cornea/retina segmentation by gaze angle
+	# color = angles[:] to colour based on angle w.r.t. neutral gaze direction of original model
+	
+	Colorbar(f_new_eyes[1,2],h)
+	f_new_eyes
+end
+
+# ╔═╡ eb9925ba-bafd-4256-9f0d-1b1061e4460c
+begin
+	@info maximum(an), minimum(an) # sanity check - max & minimum angles should be roughly between 0-180 
+	an_cornea_R = angles[lsi_eyemodel["Retina"]] #EyeCornea_right_
+	@info maximum(an_cornea_R), minimum(an_cornea_R)
+end
+
+# ╔═╡ ce6a92ee-7f8d-40db-8640-16812d221c39
+begin
+	function weights_from_gazedir(orientation, gazedir, max_cornea_angle_deg)
+		if(angle(orientation,gazedir)<=max_cornea_angle_deg)
+			return 1
+		else 
+			return -1
+		end
+	end
+	eyeweights = zeros(size(eyemodel["pos"])[1])
+	eyeweights[em_sim_idx] .= mapslices(x -> weights_from_gazedir(x,gazedirection,54.0384),eyemodel["orientation"][em_sim_idx,:],dims=2)
+	eyeweights
+end
+
+# ╔═╡ 7cefc189-5d38-4da4-8772-dd26d37e75f8
+begin
+	mag_em = magnitude(eyemodel["leadfield"],eyemodel["orientation"])
+	mag_em_sum = sum(mag_eyemodel[:,ii].*eyeweights[ii] for ii in em_sim_idx)
+	# mag_eyemodel_cornea = sum(mag_eyemodel[:,ii] for ii in lsi_eyemodel["Cornea"])
+end
+
+# ╔═╡ 13a9a336-b29f-4728-9c72-6f0617d54377
+# [eyeweights[lsi_eyemodel["Cornea"]] eyemodel["orientation"][lsi_eyemodel["Cornea"],:]]
+
+# ╔═╡ 67f0e0a2-16ea-4930-bec2-556a3f954bee
+begin
+	f_topopolots_gazeB = Figure()
+	plot_topoplot!(
+		f_topopolots_gazeB[1,1], mag_em_sum-weighted_difference_LF, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
+	plot_topoplot!(
+		f_topopolots_gazeB[2,1], weighted_difference_LF, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
+	plot_topoplot!(
+		f_topopolots_gazeB[2,2], mag_em_sum, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)#colorbar=(; limits=(-47, 365)))
+	f_topopolots_gazeB
+end
+
+# ╔═╡ 41b27ecd-d080-400f-bf47-281e5fca2cca
+@info mag_em_sum-weighted_difference_LF
+
+# ╔═╡ 6d27dc13-6098-4692-a029-2598c97ed700
+function plot_r_c_topo(cornea_LF, retina_LF)
+	# given cornea and retina leadfields, plot them both and the resultant cornea-retina difference leadfield
+	f = Figure()
+	plot_topoplot!(
+		f[1,1], cornea_LF-retina_LF, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
+	plot_topoplot!(
+		f[2,1], cornea_LF, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
+	plot_topoplot!(
+		f[2,2], retina_LF, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
+	return f
+end
+
+# ╔═╡ 26b58e7d-42a4-4e44-a902-165a52bf654c
+begin
+	plot_r_c_topo(mag_eyemodel_cornea,mag_eyemodel_retina)
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
