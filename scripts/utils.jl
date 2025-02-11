@@ -95,20 +95,24 @@ function hart_indices_from_labels(headmodel,labels=["dummy"]; plot=false)
 end
 
 function pos2dfrom3d(pos3d)
+    #ref: UnfoldSim docs multichannel example
 	pos2d = UnfoldMakie.to_positions(pos3d')
 	pos2d = [Point2f(p[1] + 0.5, p[2] + 0.5) for p in pos2d]; 
     return pos2d
 end
 
-function plot_leadfields_difference_topo(lf1,lf2,pos2d)
-	# given cornea and retina leadfields, plot them both and the resultant cornea-retina difference leadfield
+"""
+Given two leadfields and a set of 2D electrode positions, plot them both and their difference (lf2-lf1)
+"""
+function topoplot_leadfields_difference(lf1,lf2,pos2d)
+    # from UnfoldSim docs - multichannel example
 	f = Figure()
 	plot_topoplot!(
-		f[1,1], lf1-lf2, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
+		f[1,1], lf1, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
 	plot_topoplot!(
-		f[2,1], lf1, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
-	plot_topoplot!(
-		f[2,2], lf2, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
+		f[1,2], lf2, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
+    plot_topoplot!(
+		f[2,1], lf2-lf1, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
 	return f
 end
 
