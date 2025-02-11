@@ -145,9 +145,9 @@ begin
 end
 
 # ╔═╡ 8d1bc9f2-52fe-48b7-8a77-3a962fb9fd18
-# begin
-# 	gazedirection_test = [0. 1. 0.] # use Floats: angle calculation function gives errors if we use integers.
-# end
+begin
+	gazedirection_test = [0. 1. 0.] # use Floats: angle calculation function gives errors if we use integers.
+end
 
 # ╔═╡ c414e61f-c9e5-4479-903c-3b7a46eb93df
 begin
@@ -155,8 +155,8 @@ begin
 	
 	fig_eyemodel_orientations = WGLMakie.scatter([0 0 0], alpha=0.025, color="grey")
 	
-	point3fs_o = [Point3f(p...) for p in eachrow([eyemodel["pos"];cornea_center_R;cornea_center_L;[0 75 0]])]
-	vectors_o = [Vec3f(o...) for o in eachrow([eyemodel["orientation"];gazedir_R;gazedir_L;gazedir_model_avg.*10])]
+	point3fs_o = [Point3f(p...) for p in eachrow([eyemodel["pos"];cornea_center_R;cornea_center_L;[0 10 0];[0 75 0]])]
+	vectors_o = [Vec3f(o...) for o in eachrow([eyemodel["orientation"];gazedir_R;gazedir_L;gazedirection_test.*10;gazedir_model_avg.*10])]
 	arrows!(point3fs_o, vectors_o.*6, arrowsize=Vec3f(2, 2, 0.6))
 	
 	WGLMakie.scatter!(eyemodel["pos"][em_sim_idx,:])
@@ -210,8 +210,11 @@ begin
 			return -1
 		end
 	end
+end
 
-	# sanity check: compare the weights returned by the new function vs the old direct calculation. Result - there was no difference (i.e., mean was 0.0)
+# ╔═╡ 70443561-13a1-438e-9177-90e35c47205f
+begin
+	# sanity check: compare the weights returned by the new weights_from_gazedir function vs the old direct calculation. Result - there was no difference (i.e., mean difference was 0.0)
 	# mean(weights_from_gazedir(eyemodel, em_sim_idx, gazedirection, 54.0384) .- eyeweights)
 end
 
@@ -219,61 +222,61 @@ end
 begin
 	function leadfield_from_gazedir(model, sim_idx, gazedir, max_cornea_angle_deg)
 		mag_model = magnitude(model["leadfield"],model["orientation"])
-		weights = zeros(size(model["pos"])[1]) # all sources other than those defined by sim_idx will be set to zero magnitude 
-		weights[sim_idx] .= mapslices(x -> is_corneapoint(x,gazedir,max_cornea_angle_deg), model["orientation"][sim_idx,:],dims=2)
+		source_weights = zeros(size(model["pos"])[1]) # all sources other than those defined by sim_idx will be set to zero magnitude 
+		source_weights[sim_idx] .= mapslices(x -> is_corneapoint(x,gazedir,max_cornea_angle_deg), model["orientation"][sim_idx,:],dims=2)
 
 		# or, indirectly, 
 		# weights = weights_from_gazedir(model, sim_idx, gazedir, 54.0384)
 		
-		weighted_sum = sum(mag_model[:,idx].* weights[idx] for idx in sim_idx,dims=2)
+		weighted_sum = sum(mag_model[:,idx].* source_weights[idx] for idx in sim_idx,dims=2)
 		return weighted_sum
 	end
 end
 
 # ╔═╡ 21afe7d5-85b6-4adf-8ec0-5f3a9a23507f
-# begin
-# 	eyeweights_test = weights_from_gazedir(eyemodel, em_sim_idx, gazedirection_test, 54.0384)
-# 	sim_leadfield_test = sum(mag_eyemodel[:,idx].* eyeweights_test[idx] for idx in em_sim_idx,dims=2)
-# end
+begin
+	eyeweights_test = weights_from_gazedir(eyemodel, em_sim_idx, gazedirection_test, 54.0384)
+	sim_leadfield_test = sum(mag_eyemodel[:,idx].* eyeweights_test[idx] for idx in em_sim_idx,dims=2)
+end
 
 # ╔═╡ 08a4b6a5-db09-4957-aa7e-70946109c521
-# begin
-# 	# sanity check: difference between leadfield calculated using weights_from_gazedir (with [0 1 0]) and simply-calculated headmodel leadfield 
-# 	# there is some difference - why? perhaps because the headmodel does not have eyes oriented straight ahead? 
-# 	difference_mag = sim_leadfield_test - weighted_difference_LF
+begin
+	# sanity check: difference between leadfield calculated using weights_from_gazedir (with [0 1 0]) and simply-calculated headmodel leadfield from gazedirection_test
+	# there is some difference - why? perhaps because the headmodel does not have eyes oriented straight ahead? 
+	# difference_mag = sim_leadfield_test - weighted_difference_LF
 	
-# 	topoplot_leadfields_difference(weighted_difference_LF,sim_leadfield_test,pos2dfrom3d(pos3d))
-# end
+	topoplot_leadfields_difference(weighted_difference_LF,sim_leadfield_test,pos2dfrom3d(pos3d))
+end
 
 # ╔═╡ e29d815a-9b9b-481b-abe7-865222f961d8
-# begin
-# 	# make sure that leadfield_from_gazedir gives the same output as the individual steps 
-# 	# - the 'difference' topoplot should be completely flat i.e. no difference
-# 	topoplot_leadfields_difference(
-# 		leadfield_from_gazedir(eyemodel, em_sim_idx, gazedirection_test, 54.0384), sim_leadfield_test,
-# 		pos2dfrom3d(pos3d))
-# end
+begin
+	# make sure that leadfield_from_gazedir gives the same output as the individual steps 
+	# - the 'difference' topoplot should be completely flat i.e. no difference
+	topoplot_leadfields_difference(
+		leadfield_from_gazedir(eyemodel, em_sim_idx, gazedirection_test, 54.0384), sim_leadfield_test,
+		pos2dfrom3d(pos3d))
+end
 
 # ╔═╡ 4ebe1996-7d27-4c38-90bb-a78466fbcf66
-# begin
-# 	# plot only retina and cornea, colour by specific parameter that we want to inspect
-# 	colorparam = eyeweights_test[em_sim_idx]
-# 	f_inspect,ax,h = WGLMakie.scatter(eyemodel["pos"][em_sim_idx,:],color=colorparam[:]) 
-# 	# color=eyeweights[em_sim_idx]) to colour the points based on cornea/retina segmentation by gaze angle
-# 	# color = angles[:] to colour based on angle w.r.t. neutral gaze direction of original model
+begin
+	# plot only retina and cornea, colour by specific parameter that we want to inspect
+	colorparam = eyeweights_test[em_sim_idx]
+	f_inspect,ax,h = WGLMakie.scatter(eyemodel["pos"][em_sim_idx,:],color=colorparam[:]) 
+	# color=eyeweights[em_sim_idx]) to colour the points based on cornea/retina segmentation by gaze angle
+	# color = angles[:] to colour based on angle w.r.t. neutral gaze direction of original model
 	
-# 	Colorbar(f_inspect[1,2],h)
-# 	f_inspect
-# end
+	Colorbar(f_inspect[1,2],h)
+	f_inspect
+end
 
 # ╔═╡ d5c0f30e-5c12-4035-b4fa-342ac7657e30
-# begin
-# 	# get leadfields of two different positions and plot them with the difference
-# 	topoplot_leadfields_difference(
-# 		leadfield_from_gazedir(eyemodel, em_sim_idx, [-1 0 0], 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, [1 0 0], 54.0384),
-# 		pos2dfrom3d(pos3d)
-# 	)
-# end
+begin
+	# get leadfields of two different positions and plot them with the difference
+	topoplot_leadfields_difference(
+		leadfield_from_gazedir(eyemodel, em_sim_idx, [-1 0 0], 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, [1 0 0], 54.0384),
+		pos2dfrom3d(pos3d)
+	)
+end
 
 # ╔═╡ 2bee1d29-9fe8-40cc-81f6-d895dcb220be
 # Improvements, further TODOs, other notes:
@@ -2811,10 +2814,11 @@ version = "3.6.0+0"
 # ╟─a3deace1-21a2-4c5a-a68a-84e31360d986
 # ╟─dc315567-4d47-44dc-aea6-4eb500da2d3d
 # ╠═8d1bc9f2-52fe-48b7-8a77-3a962fb9fd18
-# ╟─c414e61f-c9e5-4479-903c-3b7a46eb93df
+# ╠═c414e61f-c9e5-4479-903c-3b7a46eb93df
 # ╠═c25aa461-d1f5-44f6-8ee7-0289be17098c
 # ╟─a7036413-65e2-41a0-8b6c-ddfd972cfd69
 # ╠═f6165a8f-4091-46ec-949c-b176c0ce7644
+# ╠═70443561-13a1-438e-9177-90e35c47205f
 # ╠═01070f88-06d3-41b3-9d08-46faa6b41199
 # ╠═21afe7d5-85b6-4adf-8ec0-5f3a9a23507f
 # ╠═08a4b6a5-db09-4957-aa7e-70946109c521
