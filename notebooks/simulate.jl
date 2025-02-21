@@ -155,6 +155,45 @@ begin
 	@info cornea_center_R, cornea_center_L
 end
 
+# ╔═╡ e038aaea-2764-4646-943c-69dffdf2b5ba
+begin
+	# plot eyemodel sources with calculated orientations; centroids; approx. gaze direction. plot average gazedirection from the model between the corneas, plot parameter 'gazedirection_test' at the origin.
+	
+	fig_eyemodel_orientations = WGLMakie.scatter([0 0 0], alpha=0.025, color="grey")
+	
+	point3fs_o = [Point3f(p...) for p in eachrow(
+		[
+			eyemodel["pos"];
+			cornea_center_R;
+			cornea_center_L;
+			[0 10 0];
+			[0 75 0];
+			# equiv_dipole_pos
+		]
+	)]
+	vectors_o = [Vec3f(o...) for o in eachrow(
+		[
+			eyemodel["orientation"];
+			gazedir_R;
+			gazedir_L;
+			gazedirection_test.*10;
+			gazedir_model_avg.*10;
+			# equiv_dipole_ori.*10
+			# hcat(equiv_dipole_ori...)'.*10 # this worked with the old thing
+		]
+	)]
+	arrows!(point3fs_o, vectors_o.*6, arrowsize=Vec3f(2, 2, 0.6))
+	
+	WGLMakie.scatter!(eyemodel["pos"][em_sim_idx,:])
+	# red points - centroid considering ALL eye sources
+	WGLMakie.scatter!(eyeall_center_L,color="red")
+	WGLMakie.scatter!(eyeall_center_R,color="red")
+	# pink points - centroid using just retina&cornea sources
+	WGLMakie.scatter!(eye_center_L,color="pink")
+	WGLMakie.scatter!(eye_center_R,color="pink")
+	fig_eyemodel_orientations
+end
+
 # ╔═╡ c25aa461-d1f5-44f6-8ee7-0289be17098c
 begin
 	# directly simulate leadfield for original position in the model
@@ -2895,6 +2934,7 @@ version = "3.6.0+0"
 # ╟─a3deace1-21a2-4c5a-a68a-84e31360d986
 # ╟─dc315567-4d47-44dc-aea6-4eb500da2d3d
 # ╠═8d1bc9f2-52fe-48b7-8a77-3a962fb9fd18
+# ╠═e038aaea-2764-4646-943c-69dffdf2b5ba
 # ╠═c25aa461-d1f5-44f6-8ee7-0289be17098c
 # ╠═a7036413-65e2-41a0-8b6c-ddfd972cfd69
 # ╠═f6165a8f-4091-46ec-949c-b176c0ce7644
