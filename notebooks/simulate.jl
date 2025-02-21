@@ -28,6 +28,11 @@ begin
 	using PlutoLinks # to watch and reload the utility scripts file
 end
 
+# ╔═╡ 9b2734ad-d052-4d16-99c4-ef687257bcfe
+begin
+	using CoordinateTransformations
+end
+
 # ╔═╡ c9125a84-e898-11ef-1440-138458aa6009
 @use_file include("../scripts/utils.jl") 
 
@@ -66,7 +71,7 @@ end
 begin
 	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_new_2025-02-10.mat")
 	remove_indices = [164, 165, 166, 167] # since eyemodel structure doesn't exactly correspond to the main hartmut mat structure expected by the read_new_hartmut function, just get the indices of the electrodes that it drops & drop the same indices from eyemodel directly 
-	eyemodel["leadfield"] = eyemodel["leadfield"][Not(remove_indices), :, :] .* 10e3
+	eyemodel["leadfield"] = eyemodel["leadfield"][Not(remove_indices), :, :]
 	@info size(eyemodel["pos"])
 	""
 end
@@ -147,26 +152,7 @@ end
 # ╔═╡ 8d1bc9f2-52fe-48b7-8a77-3a962fb9fd18
 begin
 	gazedirection_test = [0. 1. 0.] # use Floats: angle calculation function gives errors if we use integers.
-end
-
-# ╔═╡ c414e61f-c9e5-4479-903c-3b7a46eb93df
-begin
-	# plot eyemodel sources with calculated orientations; centroids; approx. gaze direction. plot average gazedirection from the model between the corneas, plot parameter 'gazedirection_test' at the origin.
-	
-	fig_eyemodel_orientations = WGLMakie.scatter([0 0 0], alpha=0.025, color="grey")
-	
-	point3fs_o = [Point3f(p...) for p in eachrow([eyemodel["pos"];cornea_center_R;cornea_center_L;[0 10 0];[0 75 0]])]
-	vectors_o = [Vec3f(o...) for o in eachrow([eyemodel["orientation"];gazedir_R;gazedir_L;gazedirection_test.*10;gazedir_model_avg.*10])]
-	arrows!(point3fs_o, vectors_o.*6, arrowsize=Vec3f(2, 2, 0.6))
-	
-	WGLMakie.scatter!(eyemodel["pos"][em_sim_idx,:])
-	# red points - centroid considering ALL eye sources
-	WGLMakie.scatter!(eyeall_center_L,color="red")
-	WGLMakie.scatter!(eyeall_center_R,color="red")
-	# pink points - centroid using just retina&cornea sources
-	WGLMakie.scatter!(eye_center_L,color="pink")
-	WGLMakie.scatter!(eye_center_R,color="pink")
-	fig_eyemodel_orientations
+	@info cornea_center_R, cornea_center_L
 end
 
 # ╔═╡ c25aa461-d1f5-44f6-8ee7-0289be17098c
@@ -198,6 +184,18 @@ end
 
 # ╔═╡ f6165a8f-4091-46ec-949c-b176c0ce7644
 begin
+	function gazevec_from_angle(angle_deg)
+		# just x,y plane for now. gaze angle measured from front neutral gaze, not from x-axis
+		return [sind(angle_deg) cosd(angle_deg) 0]
+	end
+	@info "gazevec_from_angle: eg. +/- 35deg", gazevec_from_angle(35), gazevec_from_angle(-35)
+
+	function gv_angle_3d(angle_H, angle_V)
+		# angles measured from center gaze position - use complementary angle for θ 
+		return CartesianFromSpherical()(Spherical(1, deg2rad(90-angle_H), deg2rad(angle_V)))
+	end
+	gv_angle_3d(0, -35), gv_angle_3d(35, 0)
+	
 	function weights_from_gazedir(model, sim_idx, gazedir, max_cornea_angle_deg)
 		eyeweights = zeros(size(model["pos"])[1]) # all sources other than those defined by sim_idx will be set to zero magnitude 
 		eyeweights[sim_idx] .= mapslices(x -> is_corneapoint(x,gazedir,max_cornea_angle_deg), model["orientation"][sim_idx,:],dims=2)
@@ -210,6 +208,24 @@ begin
 			return -1
 		end
 	end
+end
+
+# ╔═╡ 99735c39-902b-4abb-ba94-8d49722c3dd6
+begin
+	gazevec_from_angle(-35)
+	@info angle([0 0.819 0.574], gazedirection_test), angle([0 0.819 -0.574], gazedirection_test)
+	p = Spherical(1, deg2rad(90-0), deg2rad(35))
+	p1 = Spherical(1, deg2rad(90-0), deg2rad(-35))
+	vec1 = CartesianFromSpherical()(p)
+	vec2 = CartesianFromSpherical()(p1)
+	@info p
+	@info vec1
+	@info vec2
+	ptest = Spherical(1, deg2rad(90-30), deg2rad(30))
+	@info ptest
+	@info angle(CartesianFromSpherical()(ptest), [0 1 0])
+	CartesianFromSpherical()(Spherical(1, deg2rad(90-0), deg2rad(30)))
+	# above: getting (gaze/orientation) unit vector in 3D by passing in 2 angles (azimuth, latitude) 
 end
 
 # ╔═╡ 70443561-13a1-438e-9177-90e35c47205f
@@ -245,7 +261,7 @@ begin
 	# there is some difference - why? perhaps because the headmodel does not have eyes oriented straight ahead? 
 	# difference_mag = sim_leadfield_test - weighted_difference_LF
 	
-	topoplot_leadfields_difference(weighted_difference_LF,sim_leadfield_test,pos2dfrom3d(pos3d))
+	# topoplot_leadfields_difference(weighted_difference_LF,sim_leadfield_test,pos2dfrom3d(pos3d))
 end
 
 # ╔═╡ e29d815a-9b9b-481b-abe7-865222f961d8
@@ -255,6 +271,7 @@ begin
 	topoplot_leadfields_difference(
 		leadfield_from_gazedir(eyemodel, em_sim_idx, gazedirection_test, 54.0384), sim_leadfield_test,
 		pos2dfrom3d(pos3d))
+	""
 end
 
 # ╔═╡ 4ebe1996-7d27-4c38-90bb-a78466fbcf66
@@ -266,16 +283,64 @@ begin
 	# color = angles[:] to colour based on angle w.r.t. neutral gaze direction of original model
 	
 	Colorbar(f_inspect[1,2],h)
-	f_inspect
+	# f_inspect
 end
 
 # ╔═╡ d5c0f30e-5c12-4035-b4fa-342ac7657e30
 begin
-	# get leadfields of two different positions and plot them with the difference
+	# L-R movement - full left to full right
 	topoplot_leadfields_difference(
 		leadfield_from_gazedir(eyemodel, em_sim_idx, [-1 0 0], 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, [1 0 0], 54.0384),
 		pos2dfrom3d(pos3d)
 	)
+	""
+end
+
+# ╔═╡ d01ef98f-1fd7-41ec-b8f3-f7aa154e4c84
+begin
+	# L-R movement - 35deg left to 35deg right
+	@info "horizontal L-R -/+35deg"
+	# topoplot_leadfields_difference(
+	# 	leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-35), 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(35), 54.0384),
+	# 	pos2dfrom3d(pos3d), false
+	# )
+	
+end
+
+# ╔═╡ 6b67ee46-6c2c-401c-924c-3470631f11c7
+begin
+	# L-R movement - 35deg left to 0deg
+	# @info "horizontal L-R -35->0 deg"
+	# topoplot_leadfields_difference(
+	# 	leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-35), 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(0), 54.0384),
+	# 	pos2dfrom3d(pos3d), true
+	# )
+	@info "horizontal L-R -/+17deg"
+	# topoplot_leadfields_difference(
+	# 	leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-17), 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(17), 54.0384),
+	# 	pos2dfrom3d(pos3d), false
+	# )
+end
+
+# ╔═╡ 4de0ecc8-d272-4750-9d97-b69776c03115
+begin
+	# vertical movement
+	@info "vertical movement: -35deg to +35deg "
+	# f_vertical = topoplot_leadfields_difference(
+	# 	leadfield_from_gazedir(eyemodel, em_sim_idx, gv_angle_3d(0, -35), 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, gv_angle_3d(0, 35), 54.0384),
+	# 	pos2dfrom3d(pos3d), true
+	# )
+end
+
+# ╔═╡ 852bdf41-ade3-49b5-9414-76a51358f81b
+# topoplot_leadfields_difference(mag_eyemodel_retina,mag_eyemodel_cornea,pos2dfrom3d(pos3d))
+
+# ╔═╡ c1d28602-dab5-49c7-aa8d-31bdee8d2abc
+begin
+	@info "max", maximum(weighted_difference_LF), maximum(sim_leadfield_test), "min",  minimum(weighted_difference_LF), minimum(sim_leadfield_test)
+	
+	max, min = maximum([weighted_difference_LF sim_leadfield_test]), minimum([weighted_difference_LF sim_leadfield_test])
+	max
 end
 
 # ╔═╡ 2bee1d29-9fe8-40cc-81f6-d895dcb220be
@@ -285,6 +350,8 @@ end
 # TODO: add proper titles for each of the plots
 # TODO: check how many retina points are being falsely categorised as cornea or vice versa based on just angle<max_cornea_angle
 # TODO: update topoplot_leadfields_difference - use common colorrange/colorbar
+# TODO: auto-pick cornea cutoff angle instead of using hardcoded value
+# TODO: update gazevec_from_angle to 3D version
 
 # TODO: simulate individual eyes - can we just pass indices specific to a single eye? pass 2 individual gaze angles and internally simulate & add? how difficult is this - maybe do this later and add as 'outlook'/TODO for now
 
@@ -292,6 +359,7 @@ end
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 AngleBetweenVectors = "ec570357-d46e-52ed-9726-18773498274d"
+CoordinateTransformations = "150eb455-5306-5404-9cee-2592286d6298"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -306,6 +374,7 @@ WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
 
 [compat]
 AngleBetweenVectors = "~0.3.0"
+CoordinateTransformations = "~0.6.4"
 DataFrames = "~1.7.0"
 HDF5 = "~0.17.2"
 MAT = "~0.10.7"
@@ -313,9 +382,9 @@ PlutoLinks = "~0.1.6"
 StableRNGs = "~1.0.2"
 Statistics = "~1.11.1"
 TopoPlots = "~0.2.2"
-UnfoldMakie = "~0.5.13"
-UnfoldSim = "~0.3.2"
-WGLMakie = "~0.10.18"
+UnfoldMakie = "~0.5.14"
+UnfoldSim = "~0.4.0"
+WGLMakie = "~0.11.1"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -324,7 +393,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.2"
 manifest_format = "2.0"
-project_hash = "926a63bed0e243f4442abfe2794984ac8e2f8f0e"
+project_hash = "e75f2fb5e16d6d4d7834ff74970a73fe14ba9a39"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -369,12 +438,13 @@ version = "0.1.41"
 
 [[deps.Adapt]]
 deps = ["LinearAlgebra", "Requires"]
-git-tree-sha1 = "50c3c56a52972d78e8be9fd135bfb91c9574c140"
+git-tree-sha1 = "cd8b948862abee8f3d3e9b73a102a9ca924debb0"
 uuid = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
-version = "4.1.1"
-weakdeps = ["StaticArrays"]
+version = "4.2.0"
+weakdeps = ["SparseArrays", "StaticArrays"]
 
     [deps.Adapt.extensions]
+    AdaptSparseArraysExt = "SparseArrays"
     AdaptStaticArraysExt = "StaticArrays"
 
 [[deps.AdaptivePredicates]]
@@ -384,9 +454,9 @@ version = "1.2.0"
 
 [[deps.AlgebraOfGraphics]]
 deps = ["Accessors", "Colors", "Dates", "Dictionaries", "FileIO", "GLM", "GeoInterface", "GeometryBasics", "GridLayoutBase", "Isoband", "KernelDensity", "Loess", "Makie", "NaturalSort", "PlotUtils", "PolygonOps", "PooledArrays", "PrecompileTools", "RelocatableFolders", "StatsBase", "StructArrays", "Tables"]
-git-tree-sha1 = "ad7d27bb258200fde0f8e9a7df5802dc5cda1d26"
+git-tree-sha1 = "758837f238b4cfa6b95849c44e6b8995e127e8d9"
 uuid = "cbdf2221-f076-402e-a563-3d30da359d67"
-version = "0.8.14"
+version = "0.9.3"
 
 [[deps.AliasTables]]
 deps = ["PtrArrays", "Random"]
@@ -444,9 +514,9 @@ version = "7.18.0"
 
 [[deps.ArrayLayouts]]
 deps = ["FillArrays", "LinearAlgebra"]
-git-tree-sha1 = "2bf6e01f453284cb61c312836b4680331ddfc44b"
+git-tree-sha1 = "4e25216b8fea1908a0ce0f5d87368587899f75be"
 uuid = "4c555306-a7a7-4459-81d9-ec55ddd5c99a"
-version = "1.11.0"
+version = "1.11.1"
 weakdeps = ["SparseArrays"]
 
     [deps.ArrayLayouts.extensions]
@@ -519,9 +589,9 @@ version = "0.3.2"
 
 [[deps.Bonito]]
 deps = ["Base64", "CodecZlib", "Colors", "Dates", "Deno_jll", "HTTP", "Hyperscript", "LinearAlgebra", "Markdown", "MsgPack", "Observables", "RelocatableFolders", "SHA", "Sockets", "Tables", "ThreadPools", "URIs", "UUIDs", "WidgetsBase"]
-git-tree-sha1 = "534820940e4359c09adc615f8bd06ca90d508ba6"
+git-tree-sha1 = "e48e53213512466cebc99c267e275238aaabad6a"
 uuid = "824d6782-a2ef-11e9-3a09-e5662e0c26f8"
-version = "4.0.1"
+version = "4.0.3"
 
 [[deps.BufferedStreams]]
 git-tree-sha1 = "6863c5b7fc997eadcabdbaf6c5f201dc30032643"
@@ -585,9 +655,9 @@ weakdeps = ["SparseArrays"]
     ChainRulesCoreSparseArraysExt = "SparseArrays"
 
 [[deps.ChunkSplitters]]
-git-tree-sha1 = "397b871ff701290cc122cca06af61c5bdf9f5605"
+git-tree-sha1 = "efd065d66c7d683e355a14f32ef1e149dbd37b24"
 uuid = "ae650224-84b6-46f8-82ea-d812ca08434e"
-version = "3.1.0"
+version = "3.1.1"
 
 [[deps.CloughTocher2DInterpolation]]
 deps = ["LinearAlgebra", "MiniQhull", "PrecompileTools", "StaticArrays"]
@@ -609,9 +679,9 @@ version = "0.4.5"
 
 [[deps.CodecZlib]]
 deps = ["TranscodingStreams", "Zlib_jll"]
-git-tree-sha1 = "545a177179195e442472a1c4dc86982aa7a1bef0"
+git-tree-sha1 = "962834c22b66e32aa10f7611c08c8ca4e20749a9"
 uuid = "944b1d66-785c-5afd-91f1-9de20f533193"
-version = "0.7.7"
+version = "0.7.8"
 
 [[deps.CodecZstd]]
 deps = ["TranscodingStreams", "Zstd_jll"]
@@ -627,21 +697,25 @@ version = "0.4.1"
 
 [[deps.ColorSchemes]]
 deps = ["ColorTypes", "ColorVectorSpace", "Colors", "FixedPointNumbers", "PrecompileTools", "Random"]
-git-tree-sha1 = "26ec26c98ae1453c692efded2b17e15125a5bea1"
+git-tree-sha1 = "403f2d8e209681fcbd9468a8514efff3ea08452e"
 uuid = "35d6a980-a343-548e-a6ea-1d62b119f2f4"
-version = "3.28.0"
+version = "3.29.0"
 
 [[deps.ColorTypes]]
 deps = ["FixedPointNumbers", "Random"]
-git-tree-sha1 = "b10d0b65641d57b8b4d5e234446582de5047050d"
+git-tree-sha1 = "c7acce7a7e1078a20a285211dd73cd3941a871d6"
 uuid = "3da002f7-5984-5a60-b8a6-cbb66c0b333f"
-version = "0.11.5"
+version = "0.12.0"
+weakdeps = ["StyledStrings"]
+
+    [deps.ColorTypes.extensions]
+    StyledStringsExt = "StyledStrings"
 
 [[deps.ColorVectorSpace]]
 deps = ["ColorTypes", "FixedPointNumbers", "LinearAlgebra", "Requires", "Statistics", "TensorCore"]
-git-tree-sha1 = "a1f44953f2382ebb937d60dafbe2deea4bd23249"
+git-tree-sha1 = "8b3b6f87ce8f65a2b4f857528fd8d70086cd72b1"
 uuid = "c3611d14-8923-5661-9e6a-0046d554d3a4"
-version = "0.10.0"
+version = "0.11.0"
 weakdeps = ["SpecialFunctions"]
 
     [deps.ColorVectorSpace.extensions]
@@ -1080,10 +1154,10 @@ uuid = "cf35fbd7-0cd7-5166-be24-54bfbe79505f"
 version = "1.4.1"
 
 [[deps.GeometryBasics]]
-deps = ["EarCut_jll", "Extents", "GeoInterface", "IterTools", "LinearAlgebra", "StaticArrays", "StructArrays", "Tables"]
-git-tree-sha1 = "b62f2b2d76cee0d61a2ef2b3118cd2a3215d3134"
+deps = ["EarCut_jll", "Extents", "GeoInterface", "IterTools", "LinearAlgebra", "PrecompileTools", "Random", "StaticArrays"]
+git-tree-sha1 = "3ba0e2818cc2ff79a5989d4dca4bc63120a98bd9"
 uuid = "5c1252a2-5f33-56bf-86c9-59e7332b4326"
-version = "0.4.11"
+version = "0.5.5"
 
 [[deps.Gettext_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "Libiconv_jll", "Pkg", "XML2_jll"]
@@ -1133,10 +1207,10 @@ version = "0.17.2"
     MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
 
 [[deps.HDF5_jll]]
-deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "LLVMOpenMP_jll", "LazyArtifacts", "LibCURL_jll", "Libdl", "MPICH_jll", "MPIPreferences", "MPItrampoline_jll", "MicrosoftMPI_jll", "OpenMPI_jll", "OpenSSL_jll", "TOML", "Zlib_jll", "libaec_jll"]
-git-tree-sha1 = "38c8874692d48d5440d5752d6c74b0c6b0b60739"
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "LazyArtifacts", "LibCURL_jll", "Libdl", "MPICH_jll", "MPIPreferences", "MPItrampoline_jll", "MicrosoftMPI_jll", "OpenMPI_jll", "OpenSSL_jll", "TOML", "Zlib_jll", "libaec_jll"]
+git-tree-sha1 = "87bd95f99219dc3b86d4ee11a9a7bfa6075000a9"
 uuid = "0234f1f7-429e-5d53-9886-15a909be8d59"
-version = "1.14.2+1"
+version = "1.14.5+0"
 
 [[deps.HTTP]]
 deps = ["Base64", "CodecZlib", "ConcurrentUtilities", "Dates", "ExceptionUnwrapping", "Logging", "LoggingExtras", "MbedTLS", "NetworkOptions", "OpenSSL", "PrecompileTools", "Random", "SimpleBufferStream", "Sockets", "URIs", "UUIDs"]
@@ -1158,9 +1232,9 @@ version = "0.5.3"
 
 [[deps.Hwloc_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "50aedf345a709ab75872f80a2779568dc0bb461b"
+git-tree-sha1 = "f93a9ce66cd89c9ba7a4695a47fd93b4c6bc59fa"
 uuid = "e33a78d0-f292-5ffc-b300-72abe9b543c8"
-version = "2.11.2+3"
+version = "2.12.0+0"
 
 [[deps.HypergeometricFunctions]]
 deps = ["LinearAlgebra", "OpenLibm_jll", "SpecialFunctions"]
@@ -1243,9 +1317,9 @@ uuid = "d25df0c9-e2be-5dd7-82c8-3ad0b3e990b9"
 version = "0.1.5"
 
 [[deps.InlineStrings]]
-git-tree-sha1 = "45521d31238e87ee9f9732561bfee12d4eebd52d"
+git-tree-sha1 = "6a9fde685a7ac1eb3495f8e812c5a7c3711c2d5e"
 uuid = "842dd82b-1e85-43dc-bf29-5d0ee9dffc48"
-version = "1.4.2"
+version = "1.4.3"
 weakdeps = ["ArrowTypes", "Parsers"]
 
     [deps.InlineStrings.extensions]
@@ -1275,9 +1349,9 @@ weakdeps = ["Unitful"]
 
 [[deps.IntervalArithmetic]]
 deps = ["CRlibm_jll", "LinearAlgebra", "MacroTools", "RoundingEmulator"]
-git-tree-sha1 = "eb6ca9aef11db0c08b7ac0a5952c6c6ba6fbebf0"
+git-tree-sha1 = "0fcf2079f918f68c6412cab5f2679822cbd7357f"
 uuid = "d1acc4aa-44c8-5952-acd4-ba5d80a2a253"
-version = "0.22.22"
+version = "0.22.23"
 weakdeps = ["DiffRules", "ForwardDiff", "IntervalSets", "RecipesBase"]
 
     [deps.IntervalArithmetic.extensions]
@@ -1582,9 +1656,9 @@ version = "0.9.2"
 
 [[deps.MPICH_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Hwloc_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "MPIPreferences", "TOML"]
-git-tree-sha1 = "7715e65c47ba3941c502bffb7f266a41a7f54423"
+git-tree-sha1 = "e7159031670cee777cc2840aef7a521c3603e36c"
 uuid = "7cb0a576-ebde-5e09-9194-50597f1243b4"
-version = "4.2.3+0"
+version = "4.3.0+0"
 
 [[deps.MPIPreferences]]
 deps = ["Libdl", "Preferences"]
@@ -1594,9 +1668,9 @@ version = "0.1.11"
 
 [[deps.MPItrampoline_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "MPIPreferences", "TOML"]
-git-tree-sha1 = "70e830dab5d0775183c99fc75e4c24c614ed7142"
+git-tree-sha1 = "97aac4a518b6f01851f8821272780e1ba56fe90d"
 uuid = "f1f71cc9-e9ae-5b93-9b94-4fe0e1ad3748"
-version = "5.5.1+2"
+version = "5.5.2+0"
 
 [[deps.MacroTools]]
 git-tree-sha1 = "72aebe0b5051e5143a079a4685a46da330a40472"
@@ -1604,16 +1678,16 @@ uuid = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 version = "0.5.15"
 
 [[deps.Makie]]
-deps = ["Animations", "Base64", "CRC32c", "ColorBrewer", "ColorSchemes", "ColorTypes", "Colors", "Contour", "Dates", "DelaunayTriangulation", "Distributions", "DocStringExtensions", "Downloads", "FFMPEG_jll", "FileIO", "FilePaths", "FixedPointNumbers", "Format", "FreeType", "FreeTypeAbstraction", "GeometryBasics", "GridLayoutBase", "ImageBase", "ImageIO", "InteractiveUtils", "Interpolations", "IntervalSets", "InverseFunctions", "Isoband", "KernelDensity", "LaTeXStrings", "LinearAlgebra", "MacroTools", "MakieCore", "Markdown", "MathTeXEngine", "Observables", "OffsetArrays", "Packing", "PlotUtils", "PolygonOps", "PrecompileTools", "Printf", "REPL", "Random", "RelocatableFolders", "Scratch", "ShaderAbstractions", "Showoff", "SignedDistanceFields", "SparseArrays", "Statistics", "StatsBase", "StatsFuns", "StructArrays", "TriplotBase", "UnicodeFun", "Unitful"]
-git-tree-sha1 = "be3051d08b78206fb5e688e8d70c9e84d0264117"
+deps = ["Animations", "Base64", "CRC32c", "ColorBrewer", "ColorSchemes", "ColorTypes", "Colors", "Contour", "Dates", "DelaunayTriangulation", "Distributions", "DocStringExtensions", "Downloads", "FFMPEG_jll", "FileIO", "FilePaths", "FixedPointNumbers", "Format", "FreeType", "FreeTypeAbstraction", "GeometryBasics", "GridLayoutBase", "ImageBase", "ImageIO", "InteractiveUtils", "Interpolations", "IntervalSets", "InverseFunctions", "Isoband", "KernelDensity", "LaTeXStrings", "LinearAlgebra", "MacroTools", "MakieCore", "Markdown", "MathTeXEngine", "Observables", "OffsetArrays", "PNGFiles", "Packing", "PlotUtils", "PolygonOps", "PrecompileTools", "Printf", "REPL", "Random", "RelocatableFolders", "Scratch", "ShaderAbstractions", "Showoff", "SignedDistanceFields", "SparseArrays", "Statistics", "StatsBase", "StatsFuns", "StructArrays", "TriplotBase", "UnicodeFun", "Unitful"]
+git-tree-sha1 = "9680336a5b67f9f9f6eaa018f426043a8cd68200"
 uuid = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
-version = "0.21.18"
+version = "0.22.1"
 
 [[deps.MakieCore]]
 deps = ["ColorTypes", "GeometryBasics", "IntervalSets", "Observables"]
-git-tree-sha1 = "9019b391d7d086e841cbeadc13511224bd029ab3"
+git-tree-sha1 = "c731269d5a2c85ffdc689127a9ba6d73e978a4b1"
 uuid = "20f20a25-4f0e-4fdf-b5d1-57303727442b"
-version = "0.8.12"
+version = "0.9.0"
 
 [[deps.MakieThemes]]
 deps = ["Colors", "Makie", "Random"]
@@ -1828,9 +1902,9 @@ version = "0.8.1+2"
 
 [[deps.OpenMPI_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Hwloc_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "MPIPreferences", "TOML", "Zlib_jll"]
-git-tree-sha1 = "2dace87e14256edb1dd0724ab7ba831c779b96bd"
+git-tree-sha1 = "6c1cf6181ffe0aa33eb33250ca2a60e54a15ea66"
 uuid = "fe0851c0-eecd-5654-98d4-656369965a5c"
-version = "5.0.6+0"
+version = "5.0.7+0"
 
 [[deps.OpenSSL]]
 deps = ["BitFlags", "Dates", "MozillaCACerts_jll", "OpenSSL_jll", "Sockets"]
@@ -1840,9 +1914,9 @@ version = "1.4.3"
 
 [[deps.OpenSSL_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "7493f61f55a6cce7325f197443aa80d32554ba10"
+git-tree-sha1 = "a9697f1d06cc3eb3fb3ad49cc67f2cfabaac31ea"
 uuid = "458c3c95-2e84-50aa-8efc-19380b2a3a95"
-version = "3.0.15+3"
+version = "3.0.16+0"
 
 [[deps.OpenSpecFun_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl"]
@@ -1886,9 +1960,9 @@ version = "0.11.32"
 
 [[deps.PNGFiles]]
 deps = ["Base64", "CEnum", "ImageCore", "IndirectArrays", "OffsetArrays", "libpng_jll"]
-git-tree-sha1 = "67186a2bc9a90f9f85ff3cc8277868961fb57cbd"
+git-tree-sha1 = "cf181f0b1e6a18dfeb0ee8acc4a9d1672499626c"
 uuid = "f57f5aa1-a3ce-4bc8-8ab9-96f992907883"
-version = "0.4.3"
+version = "0.4.4"
 
 [[deps.Packing]]
 deps = ["GeometryBasics"]
@@ -1966,9 +2040,9 @@ version = "0.1.2"
 
 [[deps.Polynomials]]
 deps = ["LinearAlgebra", "OrderedCollections", "RecipesBase", "Requires", "Setfield", "SparseArrays"]
-git-tree-sha1 = "7d1d27896cadf629b9a8f0c2541cca215b958dc0"
+git-tree-sha1 = "0973615c3239b1b0d173b77befdada6deb5aa9d8"
 uuid = "f27b6e38-b328-58d1-80ce-0feddd5e7a45"
-version = "4.0.15"
+version = "4.0.17"
 
     [deps.Polynomials.extensions]
     PolynomialsChainRulesCoreExt = "ChainRulesCore"
@@ -2200,10 +2274,10 @@ uuid = "efcf1570-3423-57d1-acb7-fd33fddbac46"
 version = "1.1.1"
 
 [[deps.ShaderAbstractions]]
-deps = ["ColorTypes", "FixedPointNumbers", "GeometryBasics", "LinearAlgebra", "Observables", "StaticArrays", "StructArrays", "Tables"]
-git-tree-sha1 = "79123bc60c5507f035e6d1d9e563bb2971954ec8"
+deps = ["ColorTypes", "FixedPointNumbers", "GeometryBasics", "LinearAlgebra", "Observables", "StaticArrays"]
+git-tree-sha1 = "818554664a2e01fc3784becb2eb3a82326a604b6"
 uuid = "65257c39-d410-5151-9873-9b3e5be5013e"
-version = "0.4.1"
+version = "0.5.0"
 
 [[deps.SharedArrays]]
 deps = ["Distributed", "Mmap", "Random", "Serialization"]
@@ -2318,9 +2392,9 @@ weakdeps = ["OffsetArrays", "StaticArrays"]
 
 [[deps.StaticArrays]]
 deps = ["LinearAlgebra", "PrecompileTools", "Random", "StaticArraysCore"]
-git-tree-sha1 = "02c8bd479d26dbeff8a7eb1d77edfc10dacabc01"
+git-tree-sha1 = "e3be13f448a43610f978d29b7adf78c76022467a"
 uuid = "90137ffa-7385-5640-81b9-e52037218182"
-version = "1.9.11"
+version = "1.9.12"
 weakdeps = ["ChainRulesCore", "Statistics"]
 
     [deps.StaticArrays.extensions]
@@ -2373,9 +2447,9 @@ version = "0.7.4"
 
 [[deps.StringManipulation]]
 deps = ["PrecompileTools"]
-git-tree-sha1 = "a6b1675a536c5ad1a60e5a5153e1fee12eb146e3"
+git-tree-sha1 = "725421ae8e530ec29bcbdddbe91ff8053421d023"
 uuid = "892a3eda-7b42-436c-8928-eab12a02cf0e"
-version = "0.4.0"
+version = "0.4.1"
 
 [[deps.StringViews]]
 git-tree-sha1 = "ec4bf39f7d25db401bcab2f11d2929798c0578e5"
@@ -2384,9 +2458,9 @@ version = "1.3.4"
 
 [[deps.StructArrays]]
 deps = ["ConstructionBase", "DataAPI", "Tables"]
-git-tree-sha1 = "9537ef82c42cdd8c5d443cbc359110cbb36bae10"
+git-tree-sha1 = "5a3a31c41e15a1e042d60f2f4942adccba05d3c9"
 uuid = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
-version = "0.6.21"
+version = "0.7.0"
 
     [deps.StructArrays.extensions]
     StructArraysAdaptExt = "Adapt"
@@ -2429,9 +2503,9 @@ version = "1.0.3"
 
 [[deps.TZJData]]
 deps = ["Artifacts"]
-git-tree-sha1 = "006a327222dda856e2304959e566ff0104ac8594"
+git-tree-sha1 = "7def47e953a91cdcebd08fbe76d69d2715499a7d"
 uuid = "dc5dba14-91b3-4cab-a142-028a31da12f7"
-version = "1.3.1+2024b"
+version = "1.4.0+2025a"
 
 [[deps.TableTraits]]
 deps = ["IteratorInterfaceExtensions"]
@@ -2487,9 +2561,9 @@ version = "0.5.0"
 
 [[deps.TimeZones]]
 deps = ["Artifacts", "Dates", "Downloads", "InlineStrings", "Mocking", "Printf", "Scratch", "TZJData", "Unicode", "p7zip_jll"]
-git-tree-sha1 = "34600f9822325409bad17639ac087a382ab586b7"
+git-tree-sha1 = "38bb1023fb94bfbaf2a29e1e0de4bbba6fe0bf6d"
 uuid = "f269a46b-ccf7-5d73-abea-4c690281aa53"
-version = "1.21.1"
+version = "1.21.2"
 weakdeps = ["RecipesBase"]
 
     [deps.TimeZones.extensions]
@@ -2497,9 +2571,15 @@ weakdeps = ["RecipesBase"]
 
 [[deps.TimerOutputs]]
 deps = ["ExprTools", "Printf"]
-git-tree-sha1 = "d7298ebdfa1654583468a487e8e83fae9d72dac3"
+git-tree-sha1 = "3832505b94c1868baea47764127e6d36b5c9f29e"
 uuid = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
-version = "0.5.26"
+version = "0.5.27"
+
+    [deps.TimerOutputs.extensions]
+    FlameGraphsExt = "FlameGraphs"
+
+    [deps.TimerOutputs.weakdeps]
+    FlameGraphs = "08572546-2f56-4bcf-ba4e-bab62c3a3f89"
 
 [[deps.ToeplitzMatrices]]
 deps = ["AbstractFFTs", "DSP", "FillArrays", "LinearAlgebra"]
@@ -2568,9 +2648,9 @@ version = "0.8.1"
 
 [[deps.UnfoldMakie]]
 deps = ["AlgebraOfGraphics", "BSplineKit", "CategoricalArrays", "ColorSchemes", "ColorTypes", "Colors", "CoordinateTransformations", "DataFrames", "DataStructures", "DocStringExtensions", "GeometryBasics", "GridLayoutBase", "ImageFiltering", "Interpolations", "LinearAlgebra", "Makie", "MakieThemes", "SparseArrays", "StaticArrays", "Statistics", "TopoPlots", "Unfold"]
-git-tree-sha1 = "abae7c58240891c44c090ac5b02acc0a6ae126b7"
+git-tree-sha1 = "54dd5c7fac59a26ede230932782073ce051584ce"
 uuid = "69a5ce3b-64fb-4f22-ae69-36dd4416af2a"
-version = "0.5.13"
+version = "0.5.14"
 
     [deps.UnfoldMakie.extensions]
     UnfoldMakiePyMNEExt = "PyMNE"
@@ -2580,9 +2660,9 @@ version = "0.5.13"
 
 [[deps.UnfoldSim]]
 deps = ["Artifacts", "DSP", "DataFrames", "Distributions", "FileIO", "HDF5", "ImageFiltering", "LinearAlgebra", "MixedModels", "MixedModelsSim", "Parameters", "Random", "SignalAnalysis", "Statistics", "StatsModels", "ToeplitzMatrices"]
-git-tree-sha1 = "28b31c77e4b2267a51d1bfe95055127dbda01aa8"
+git-tree-sha1 = "fad3691163bdae25b68a47ab6a746576a9458646"
 uuid = "ed8ae6d2-84d3-44c6-ab46-0baf21700804"
-version = "0.3.2"
+version = "0.4.0"
 
 [[deps.Unicode]]
 uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
@@ -2613,9 +2693,9 @@ version = "1.2.0"
 
 [[deps.WGLMakie]]
 deps = ["Bonito", "Colors", "FileIO", "FreeTypeAbstraction", "GeometryBasics", "Hyperscript", "LinearAlgebra", "Makie", "Observables", "PNGFiles", "PrecompileTools", "RelocatableFolders", "ShaderAbstractions", "StaticArrays"]
-git-tree-sha1 = "676bd14390033825be847e138108a1c53701407d"
+git-tree-sha1 = "d76bbe29bdac0dc4096e3838c044ed079bb8682b"
 uuid = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
-version = "0.10.18"
+version = "0.11.1"
 
 [[deps.WebP]]
 deps = ["CEnum", "ColorTypes", "FileIO", "FixedPointNumbers", "ImageCore", "libwebp_jll"]
@@ -2778,9 +2858,9 @@ version = "1.59.0+0"
 
 [[deps.oneTBB_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "7d0ea0f4895ef2f5cb83645fa689e52cb55cf493"
+git-tree-sha1 = "d5a767a3bb77135a99e433afe0eb14cd7f6914c3"
 uuid = "1317d2d5-d96f-522e-a858-c73665f53c3e"
-version = "2021.12.0+0"
+version = "2022.0.0+0"
 
 [[deps.p7zip_jll]]
 deps = ["Artifacts", "Libdl"]
@@ -2803,6 +2883,7 @@ version = "3.6.0+0"
 # ╔═╡ Cell order:
 # ╠═3a271e46-e43f-46e0-84bf-32192c9b8fe5
 # ╠═5e6b5bca-bd66-4325-8744-1afe2e83a04f
+# ╠═9b2734ad-d052-4d16-99c4-ef687257bcfe
 # ╠═c9125a84-e898-11ef-1440-138458aa6009
 # ╠═c24e4fb9-adc3-474b-bafc-12130490260c
 # ╠═b34dd987-fc86-4c0c-b0fd-ee7f10983734
@@ -2814,10 +2895,10 @@ version = "3.6.0+0"
 # ╟─a3deace1-21a2-4c5a-a68a-84e31360d986
 # ╟─dc315567-4d47-44dc-aea6-4eb500da2d3d
 # ╠═8d1bc9f2-52fe-48b7-8a77-3a962fb9fd18
-# ╠═c414e61f-c9e5-4479-903c-3b7a46eb93df
 # ╠═c25aa461-d1f5-44f6-8ee7-0289be17098c
-# ╟─a7036413-65e2-41a0-8b6c-ddfd972cfd69
+# ╠═a7036413-65e2-41a0-8b6c-ddfd972cfd69
 # ╠═f6165a8f-4091-46ec-949c-b176c0ce7644
+# ╠═99735c39-902b-4abb-ba94-8d49722c3dd6
 # ╠═70443561-13a1-438e-9177-90e35c47205f
 # ╠═01070f88-06d3-41b3-9d08-46faa6b41199
 # ╠═21afe7d5-85b6-4adf-8ec0-5f3a9a23507f
@@ -2825,6 +2906,11 @@ version = "3.6.0+0"
 # ╠═e29d815a-9b9b-481b-abe7-865222f961d8
 # ╠═4ebe1996-7d27-4c38-90bb-a78466fbcf66
 # ╠═d5c0f30e-5c12-4035-b4fa-342ac7657e30
+# ╠═d01ef98f-1fd7-41ec-b8f3-f7aa154e4c84
+# ╠═6b67ee46-6c2c-401c-924c-3470631f11c7
+# ╠═4de0ecc8-d272-4750-9d97-b69776c03115
+# ╠═852bdf41-ade3-49b5-9414-76a51358f81b
+# ╠═c1d28602-dab5-49c7-aa8d-31bdee8d2abc
 # ╠═2bee1d29-9fe8-40cc-81f6-d895dcb220be
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

@@ -104,15 +104,32 @@ end
 """
 Given two leadfields and a set of 2D electrode positions, plot them both and their difference (lf2-lf1)
 """
-function topoplot_leadfields_difference(lf1,lf2,pos2d)
+function topoplot_leadfields_difference(lf1,lf2,pos2d, commoncolorrange=true)
     # from UnfoldSim docs - multichannel example
 	f = Figure()
-	plot_topoplot!(
-		f[1,1], lf1, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
-	plot_topoplot!(
-		f[1,2], lf2, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
-    plot_topoplot!(
-		f[2,1], lf2-lf1, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
+    max, min = maximum([lf1 lf2]), minimum([lf1 lf2])
+    if (commoncolorrange)
+        plot_topoplot!(
+            f[1,1], lf1, positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = false,colorrange=(min,max)))
+        plot_topoplot!(
+            f[1,2], lf2, positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = false,colorrange=(min,max)))
+        plot_topoplot!(
+            f[2,1], lf2-lf1, positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = false,colorrange=(min,max)))
+        plot_topoplot!(
+            f[2,2], (lf2-lf1).*0.01,
+            positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = true,colorrange=(min,max)))
+        Colorbar(f[:,3]; limits=(min,max), colormap = Reverse(:RdBu))
+    else
+        plot_topoplot!(
+            f[1,1], lf1, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false,))
+        plot_topoplot!(
+            f[1,2], lf2, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false,))
+        plot_topoplot!(
+		f[2,1], lf2-lf1, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false,))
+        plot_topoplot!(
+            f[2,2], (lf2-lf1).*0.01,
+            positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = true,))
+    end
 	return f
 end
 
