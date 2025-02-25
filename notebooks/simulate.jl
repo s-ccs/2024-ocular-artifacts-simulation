@@ -155,45 +155,6 @@ begin
 	@info cornea_center_R, cornea_center_L
 end
 
-# ╔═╡ e038aaea-2764-4646-943c-69dffdf2b5ba
-begin
-	# plot eyemodel sources with calculated orientations; centroids; approx. gaze direction. plot average gazedirection from the model between the corneas, plot parameter 'gazedirection_test' at the origin.
-	
-	fig_eyemodel_orientations = WGLMakie.scatter([0 0 0], alpha=0.025, color="grey")
-	
-	point3fs_o = [Point3f(p...) for p in eachrow(
-		[
-			eyemodel["pos"];
-			cornea_center_R;
-			cornea_center_L;
-			[0 10 0];
-			[0 75 0];
-			# equiv_dipole_pos
-		]
-	)]
-	vectors_o = [Vec3f(o...) for o in eachrow(
-		[
-			eyemodel["orientation"];
-			gazedir_R;
-			gazedir_L;
-			gazedirection_test.*10;
-			gazedir_model_avg.*10;
-			# equiv_dipole_ori.*10
-			# hcat(equiv_dipole_ori...)'.*10 # this worked with the old thing
-		]
-	)]
-	arrows!(point3fs_o, vectors_o.*6, arrowsize=Vec3f(2, 2, 0.6))
-	
-	WGLMakie.scatter!(eyemodel["pos"][em_sim_idx,:])
-	# red points - centroid considering ALL eye sources
-	WGLMakie.scatter!(eyeall_center_L,color="red")
-	WGLMakie.scatter!(eyeall_center_R,color="red")
-	# pink points - centroid using just retina&cornea sources
-	WGLMakie.scatter!(eye_center_L,color="pink")
-	WGLMakie.scatter!(eye_center_R,color="pink")
-	fig_eyemodel_orientations
-end
-
 # ╔═╡ c25aa461-d1f5-44f6-8ee7-0289be17098c
 begin
 	# directly simulate leadfield for original position in the model
@@ -307,9 +268,9 @@ end
 begin
 	# make sure that leadfield_from_gazedir gives the same output as the individual steps 
 	# - the 'difference' topoplot should be completely flat i.e. no difference
-	topoplot_leadfields_difference(
-		leadfield_from_gazedir(eyemodel, em_sim_idx, gazedirection_test, 54.0384), sim_leadfield_test,
-		pos2dfrom3d(pos3d))
+	# topoplot_leadfields_difference(
+	# 	leadfield_from_gazedir(eyemodel, em_sim_idx, gazedirection_test, 54.0384), sim_leadfield_test,
+	# 	pos2dfrom3d(pos3d))
 	""
 end
 
@@ -393,6 +354,156 @@ end
 # TODO: update gazevec_from_angle to 3D version
 
 # TODO: simulate individual eyes - can we just pass indices specific to a single eye? pass 2 individual gaze angles and internally simulate & add? how difficult is this - maybe do this later and add as 'outlook'/TODO for now
+
+# ╔═╡ c8375060-fb78-4343-842a-8b9ce8f4f90e
+begin
+	# Berg&Scherg equivalent difference dipoles for eyes: L,R respectively.
+
+	# From the paper: 
+	# horizontal dipoles - oriented approx. tangential to the surface of the head (=> orientation for L and R will not be the same. they had mean 33.2deg difference). +they were in the horizontal plane i.e. no z-component.
+	# fitted equivalent dipoles corresp. to a smaller change in angle than the change in the gazedir orientation. i.e. even when gaze changed through 15deg, DD described a change of less than that.
+	# from the prev. two points, we know we cannot directly take the vector difference of gazedirs to be the DD orientations.
+	# for 2-dipole model of horiz. movements, they constrained the locations to be symmetric
+	
+	# horiz. dipoles were in front of vertical.
+	
+	
+	# locations at the front-side of the eye:
+	# equiv_dipole_idx = [UnfoldSim.closest_src([-40, 80, -38], eyemodel["pos"]) ; UnfoldSim.closest_src([40, 80, -38], eyemodel["pos"])]
+
+	# locations near the center of the eye
+	equiv_dipole_idx = [UnfoldSim.closest_src(eyeall_center_L[1,:], eyemodel["pos"]);  UnfoldSim.closest_src(eyeall_center_R[1,:], eyemodel["pos"])]
+	
+	
+	equiv_dipole_pos = eyemodel["pos"][equiv_dipole_idx,:]
+	
+	# orientations guessed just by eyeballing the figures from the paper.
+	# or_R = Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(150), deg2rad(0)))) # right eye
+	# or_L = Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(210), deg2rad(0)))) # left eye
+	# or by measuring the angles in the figures.
+	or_L = Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(-152), deg2rad(0)))) # left eye
+	or_R = Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(165), deg2rad(0)))) # right eye
+	
+	equiv_dipole_ori = vcat(or_L', or_R')
+
+
+	
+	# calculate difference dipoles just by subtracting two gaze directions / CRD orientations. - NOT viable, since orientations for indiv. eyes are different! (horiz.motion) 
+	# gaze_A = gazevec_from_angle(0)
+	# gaze_B = gazevec_from_angle(-10)
+	# or_L = or_R = gaze_B - gaze_A
+
+	# equiv_dipole_ori = [
+	# 	Array(CartesianFromSpherical()(Spherical(1, deg2rad(150), deg2rad(0))))  Array(CartesianFromSpherical()(Spherical(1, deg2rad(210), deg2rad(0))))
+	# ]
+	# equiv_dipole_ori = vcat(or_L, or_R)
+	@info or_L, or_R, equiv_dipole_ori
+	# @info vcat([1,2]', [3,4]')
+	@info "calculating B&S eqv dipole pos and orientations"
+		# vcat(
+		# [ Vector(CartesianFromSpherical()(Spherical(1, deg2rad(150), deg2rad(0)))); Vector(CartesianFromSpherical()(Spherical(1, deg2rad(210), deg2rad(0))))
+		# ])
+	# equiv_dipole_ori = reshape(equiv_dipole_ori,(2,3))
+	# equiv_dipole_orientations = reshape([equiv_dipole_ori[1] equiv_dipole_ori[2]],(2,3))
+	
+	# equiv_dipole_ori = Vector.(equiv_dipole_orientations)
+	# @info equiv_dipole_ori[:]
+	# @info Vector{Float32}(2,3).(equiv_dipole_ori)
+	# .*10
+end
+
+# ╔═╡ e038aaea-2764-4646-943c-69dffdf2b5ba
+begin
+	# plot eyemodel sources with calculated orientations; centroids; approx. gaze direction. plot average gazedirection from the model between the corneas, plot parameter 'gazedirection_test' at the origin.
+	
+	fig_eyemodel_orientations = WGLMakie.scatter([0 0 0], alpha=0.025, color="grey")
+	
+	point3fs_o = [Point3f(p...) for p in eachrow(
+		[
+			eyemodel["pos"];
+			cornea_center_R;
+			cornea_center_L;
+			[0 10 0];
+			[0 75 0];
+			# equiv_dipole_pos
+		]
+	)]
+	vectors_o = [Vec3f(o...) for o in eachrow(
+		[
+			eyemodel["orientation"];
+			gazedir_R;
+			gazedir_L;
+			gazedirection_test.*10;
+			gazedir_model_avg.*10;
+			# equiv_dipole_ori.*10
+			# hcat(equiv_dipole_ori...)'.*10 # this worked with the old thing
+		]
+	)]
+	# arrows!(point3fs_o, vectors_o.*6, arrowsize=Vec3f(2, 2, 0.6))
+
+	# plot movement-equivalent dipoles
+	p_o = [Point3f(p...) for p in eachrow(
+		[
+			equiv_dipole_pos;
+		]
+	)]
+	v_o = [Vec3f(o...) for o in eachrow(
+		[
+			equiv_dipole_ori.*3;
+			# hcat(equiv_dipole_ori...)'.*10 # this worked with the old thing
+		]
+	)]
+	arrows!(p_o, v_o.*15, arrowsize=Vec3f(2, 2, 0.6); color="red")
+	
+	WGLMakie.scatter!(eyemodel["pos"][em_sim_idx,:])
+	# red points - centroid considering ALL eye sources
+	WGLMakie.scatter!(eyeall_center_L,color="red")
+	WGLMakie.scatter!(eyeall_center_R,color="red")
+	# pink points - centroid using just retina&cornea sources
+	WGLMakie.scatter!(eye_center_L,color="pink")
+	WGLMakie.scatter!(eye_center_R,color="pink")
+
+	# purple points - movement-equivalent dipole source locations
+	WGLMakie.scatter!(Point3f(equiv_dipole_pos[1,:]),color="purple";markersize=25)
+	WGLMakie.scatter!(Point3f(equiv_dipole_pos[2,:]),color="purple";markersize=25)
+	
+	fig_eyemodel_orientations
+end
+
+# ╔═╡ 521f140f-2322-438a-8a6a-e459dace3196
+begin
+	# for comparing with Berg&scherg equivalent dipole 0 to -10 deg
+	@info "Our method: horizontal C-L 0 to -10deg"
+	LF_A = leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(0), 54.0384)
+	LF_B = leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-10), 54.0384)
+	topoplot_leadfields_difference(
+		LF_A, 
+		LF_B,
+		pos2dfrom3d(pos3d), false
+	)
+end
+
+# ╔═╡ 615a2bb0-f1ab-4469-8d2e-eb10e077de1d
+begin
+	function equiv_dipole_mag(model,idx,equiv_orientations)
+		# take just a selected subset of points in the model, along with new orientations for those points, and calculate the sum of leadfields of just these points with the new orientations. 
+		equiv_ori_model = model["orientation"]
+		equiv_ori_model[idx,:] .= equiv_orientations[1:length(idx),:]
+		@info equiv_ori_model[idx,:] 
+		mag_eyemodel_equiv = magnitude(eyemodel["leadfield"],equiv_ori_model)
+		@info [mag_eyemodel_equiv[:,ii] for ii in idx ]
+		mag = sum(mag_eyemodel_equiv[:,ii] for ii in idx)
+	end
+	edm = equiv_dipole_mag(deepcopy(eyemodel),equiv_dipole_idx,equiv_dipole_ori)
+	@info maximum(edm), minimum(edm)
+	@info maximum(LF_B-LF_A), minimum(LF_B-LF_A)
+end
+
+# ╔═╡ 6ff30595-de0a-4f57-8d24-0c3c120f7f04
+	topoplot_leadfields_difference(
+		edm.*10e3, (LF_B-LF_A).*10e3,
+		pos2dfrom3d(pos3d), false
+	)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2930,7 +3041,7 @@ version = "3.6.0+0"
 # ╠═3756412a-0715-4ae4-9e32-f46978e60a38
 # ╠═fe8025c9-3f52-401f-bbdb-60d0dffafd2a
 # ╠═13c37f0e-aedb-46be-9e50-9955536041de
-# ╟─6eb97701-d8e2-4ef9-b518-1e346246cc53
+# ╠═6eb97701-d8e2-4ef9-b518-1e346246cc53
 # ╟─a3deace1-21a2-4c5a-a68a-84e31360d986
 # ╟─dc315567-4d47-44dc-aea6-4eb500da2d3d
 # ╠═8d1bc9f2-52fe-48b7-8a77-3a962fb9fd18
@@ -2952,5 +3063,9 @@ version = "3.6.0+0"
 # ╠═852bdf41-ade3-49b5-9414-76a51358f81b
 # ╠═c1d28602-dab5-49c7-aa8d-31bdee8d2abc
 # ╠═2bee1d29-9fe8-40cc-81f6-d895dcb220be
+# ╠═c8375060-fb78-4343-842a-8b9ce8f4f90e
+# ╠═521f140f-2322-438a-8a6a-e459dace3196
+# ╠═615a2bb0-f1ab-4469-8d2e-eb10e077de1d
+# ╠═6ff30595-de0a-4f57-8d24-0c3c120f7f04
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
