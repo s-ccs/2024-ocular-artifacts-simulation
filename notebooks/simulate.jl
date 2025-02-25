@@ -165,23 +165,6 @@ begin
 	weighted_difference_LF = mag_eyemodel_cornea.*weights[1] + mag_eyemodel_retina.*weights[2] 
 end
 
-# ╔═╡ a7036413-65e2-41a0-8b6c-ddfd972cfd69
-begin
-	# manually calculating weights for each source point - now converted to a single function "weights_from_gazedir"
-	
-	# function weights_from_gazedir_old(orientation, gazedir, max_cornea_angle_deg)
-	# 	if(angle(orientation,gazedir)<=max_cornea_angle_deg)
-	# 		return 1
-	# 	else 
-	# 		return -1
-	# 	end
-	# end
-	
-	# eyeweights = zeros(size(eyemodel["pos"])[1])
-	# eyeweights[em_sim_idx] .= mapslices(x -> weights_from_gazedir_old(x,gazedirection,54.0384),eyemodel["orientation"][em_sim_idx,:],dims=2)
-	# mag_eyemodel[:,em_sim_idx]' .* eyeweights[em_sim_idx]
-end
-
 # ╔═╡ f6165a8f-4091-46ec-949c-b176c0ce7644
 begin
 	function gazevec_from_angle(angle_deg)
@@ -192,7 +175,7 @@ begin
 
 	function gv_angle_3d(angle_H, angle_V)
 		# angles measured from center gaze position - use complementary angle for θ 
-		return CartesianFromSpherical()(Spherical(1, deg2rad(90-angle_H), deg2rad(angle_V)))
+		return Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(90-angle_H), deg2rad(angle_V))))
 	end
 	gv_angle_3d(0, -35), gv_angle_3d(35, 0)
 	
@@ -208,24 +191,6 @@ begin
 			return -1
 		end
 	end
-end
-
-# ╔═╡ 99735c39-902b-4abb-ba94-8d49722c3dd6
-begin
-	gazevec_from_angle(-35)
-	@info angle([0 0.819 0.574], gazedirection_test), angle([0 0.819 -0.574], gazedirection_test)
-	p = Spherical(1, deg2rad(90-0), deg2rad(35))
-	p1 = Spherical(1, deg2rad(90-0), deg2rad(-35))
-	vec1 = CartesianFromSpherical()(p)
-	vec2 = CartesianFromSpherical()(p1)
-	@info p
-	@info vec1
-	@info vec2
-	ptest = Spherical(1, deg2rad(90-30), deg2rad(30))
-	@info ptest
-	@info angle(CartesianFromSpherical()(ptest), [0 1 0])
-	CartesianFromSpherical()(Spherical(1, deg2rad(90-0), deg2rad(30)))
-	# above: getting (gaze/orientation) unit vector in 3D by passing in 2 angles (azimuth, latitude) 
 end
 
 # ╔═╡ 70443561-13a1-438e-9177-90e35c47205f
@@ -326,10 +291,10 @@ end
 begin
 	# vertical movement
 	@info "vertical movement: -35deg to +35deg "
-	# f_vertical = topoplot_leadfields_difference(
-	# 	leadfield_from_gazedir(eyemodel, em_sim_idx, gv_angle_3d(0, -35), 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, gv_angle_3d(0, 35), 54.0384),
-	# 	pos2dfrom3d(pos3d), true
-	# )
+	f_vertical = topoplot_leadfields_difference(
+		leadfield_from_gazedir(eyemodel, em_sim_idx, gv_angle_3d(0, -35), 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, gv_angle_3d(0, 35), 54.0384),
+		pos2dfrom3d(pos3d), true
+	)
 end
 
 # ╔═╡ 852bdf41-ade3-49b5-9414-76a51358f81b
@@ -383,33 +348,12 @@ begin
 	# or by measuring the angles in the figures.
 	or_L = Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(-152), deg2rad(0)))) # left eye
 	or_R = Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(165), deg2rad(0)))) # right eye
+	@info or_L, gv_angle_3d(90-208,0)
 	
 	equiv_dipole_ori = vcat(or_L', or_R')
 
-
-	
-	# calculate difference dipoles just by subtracting two gaze directions / CRD orientations. - NOT viable, since orientations for indiv. eyes are different! (horiz.motion) 
-	# gaze_A = gazevec_from_angle(0)
-	# gaze_B = gazevec_from_angle(-10)
-	# or_L = or_R = gaze_B - gaze_A
-
-	# equiv_dipole_ori = [
-	# 	Array(CartesianFromSpherical()(Spherical(1, deg2rad(150), deg2rad(0))))  Array(CartesianFromSpherical()(Spherical(1, deg2rad(210), deg2rad(0))))
-	# ]
-	# equiv_dipole_ori = vcat(or_L, or_R)
 	@info or_L, or_R, equiv_dipole_ori
-	# @info vcat([1,2]', [3,4]')
 	@info "calculating B&S eqv dipole pos and orientations"
-		# vcat(
-		# [ Vector(CartesianFromSpherical()(Spherical(1, deg2rad(150), deg2rad(0)))); Vector(CartesianFromSpherical()(Spherical(1, deg2rad(210), deg2rad(0))))
-		# ])
-	# equiv_dipole_ori = reshape(equiv_dipole_ori,(2,3))
-	# equiv_dipole_orientations = reshape([equiv_dipole_ori[1] equiv_dipole_ori[2]],(2,3))
-	
-	# equiv_dipole_ori = Vector.(equiv_dipole_orientations)
-	# @info equiv_dipole_ori[:]
-	# @info Vector{Float32}(2,3).(equiv_dipole_ori)
-	# .*10
 end
 
 # ╔═╡ e038aaea-2764-4646-943c-69dffdf2b5ba
@@ -489,9 +433,7 @@ begin
 		# take just a selected subset of points in the model, along with new orientations for those points, and calculate the sum of leadfields of just these points with the new orientations. 
 		equiv_ori_model = model["orientation"]
 		equiv_ori_model[idx,:] .= equiv_orientations[1:length(idx),:]
-		@info equiv_ori_model[idx,:] 
 		mag_eyemodel_equiv = magnitude(eyemodel["leadfield"],equiv_ori_model)
-		@info [mag_eyemodel_equiv[:,ii] for ii in idx ]
 		mag = sum(mag_eyemodel_equiv[:,ii] for ii in idx)
 	end
 	edm = equiv_dipole_mag(deepcopy(eyemodel),equiv_dipole_idx,equiv_dipole_ori)
@@ -3045,11 +2987,9 @@ version = "3.6.0+0"
 # ╟─a3deace1-21a2-4c5a-a68a-84e31360d986
 # ╟─dc315567-4d47-44dc-aea6-4eb500da2d3d
 # ╠═8d1bc9f2-52fe-48b7-8a77-3a962fb9fd18
-# ╠═e038aaea-2764-4646-943c-69dffdf2b5ba
+# ╟─e038aaea-2764-4646-943c-69dffdf2b5ba
 # ╠═c25aa461-d1f5-44f6-8ee7-0289be17098c
-# ╠═a7036413-65e2-41a0-8b6c-ddfd972cfd69
 # ╠═f6165a8f-4091-46ec-949c-b176c0ce7644
-# ╠═99735c39-902b-4abb-ba94-8d49722c3dd6
 # ╠═70443561-13a1-438e-9177-90e35c47205f
 # ╠═01070f88-06d3-41b3-9d08-46faa6b41199
 # ╠═21afe7d5-85b6-4adf-8ec0-5f3a9a23507f
