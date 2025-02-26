@@ -281,10 +281,10 @@ begin
 	# 	pos2dfrom3d(pos3d), true
 	# )
 	@info "horizontal L-R -/+17deg"
-	# topoplot_leadfields_difference(
-	# 	leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-17), 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(17), 54.0384),
-	# 	pos2dfrom3d(pos3d), false
-	# )
+	topoplot_leadfields_difference(
+		leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-17), 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(17), 54.0384),
+		pos2dfrom3d(pos3d), false
+	)
 end
 
 # ╔═╡ 4de0ecc8-d272-4750-9d97-b69776c03115
@@ -416,10 +416,10 @@ end
 
 # ╔═╡ 521f140f-2322-438a-8a6a-e459dace3196
 begin
-	# for comparing with Berg&scherg equivalent dipole 0 to -10 deg
-	@info "Our method: horizontal C-L 0 to -10deg"
+	# for comparing with resultant dipole and Berg&scherg equivalent dipole, 0 to -15 deg
+	@info "Our method: horizontal C-L 0 to -15deg"
 	LF_A = leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(0), 54.0384)
-	LF_B = leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-10), 54.0384)
+	LF_B = leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-15), 54.0384)
 	topoplot_leadfields_difference(
 		LF_A, 
 		LF_B,
@@ -446,6 +446,49 @@ end
 		edm.*10e3, (LF_B-LF_A).*10e3,
 		pos2dfrom3d(pos3d), false
 	)
+
+# ╔═╡ 9c28c405-a62f-43ed-beba-38ebc08ceeec
+begin
+	# CRD 0 (front) to -15 (LHS)
+	crd_0_or = [0 1 0]
+	crd_L_or = gazevec_from_angle(-15)
+	@info crd_0_or, crd_L_or
+	crd_A = equiv_dipole_mag(deepcopy(eyemodel),equiv_dipole_idx,[crd_0_or; crd_0_or])
+	crd_B = equiv_dipole_mag(deepcopy(eyemodel),equiv_dipole_idx,[crd_L_or; crd_L_or])
+	topoplot_leadfields_difference(
+		crd_A.*10e3, crd_B.*10e3,
+		pos2dfrom3d(pos3d), false
+	)
+end
+
+
+# ╔═╡ 23736080-0058-4289-a8d2-e85217d0c101
+begin
+	# difference - CRD vs B&S equivalent dipoles
+	topoplot_leadfields_difference(
+		(crd_B - crd_A).*10e3, edm.*10e3,
+		pos2dfrom3d(pos3d), false
+	)
+end
+
+# ╔═╡ f2f265c0-75f0-4d6f-92b6-c21ac6420b39
+begin
+	f = Figure()
+	plot_topoplot!(
+		f[1,1], (LF_B-LF_A).*10e3, positions=pos2dfrom3d(pos3d), layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false))
+	plot_topoplot!(
+		f[1,2], (crd_B - crd_A).*10e3, positions=pos2dfrom3d(pos3d), layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
+    plot_topoplot!(
+		f[2,1], edm.*10e3, positions=pos2dfrom3d(pos3d), layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
+	plot_topoplot!(
+		f[2,2], edm.*10e3, positions=pos2dfrom3d(pos3d), layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = true),)
+	l1 = Label(f[0,1],"Our model")
+	l2 = Label(f[0,2],"Resultant dipole CRD")
+	l3 = Label(f[3,1],"B-S difference dipoles")
+	l4 = Label(f[3,2],"DD with electrodes")
+	f
+end
+
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2987,7 +3030,7 @@ version = "3.6.0+0"
 # ╟─a3deace1-21a2-4c5a-a68a-84e31360d986
 # ╟─dc315567-4d47-44dc-aea6-4eb500da2d3d
 # ╠═8d1bc9f2-52fe-48b7-8a77-3a962fb9fd18
-# ╟─e038aaea-2764-4646-943c-69dffdf2b5ba
+# ╠═e038aaea-2764-4646-943c-69dffdf2b5ba
 # ╠═c25aa461-d1f5-44f6-8ee7-0289be17098c
 # ╠═f6165a8f-4091-46ec-949c-b176c0ce7644
 # ╠═70443561-13a1-438e-9177-90e35c47205f
@@ -3007,5 +3050,8 @@ version = "3.6.0+0"
 # ╠═521f140f-2322-438a-8a6a-e459dace3196
 # ╠═615a2bb0-f1ab-4469-8d2e-eb10e077de1d
 # ╠═6ff30595-de0a-4f57-8d24-0c3c120f7f04
+# ╠═9c28c405-a62f-43ed-beba-38ebc08ceeec
+# ╠═23736080-0058-4289-a8d2-e85217d0c101
+# ╠═f2f265c0-75f0-4d6f-92b6-c21ac6420b39
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
