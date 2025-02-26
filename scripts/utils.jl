@@ -104,10 +104,14 @@ end
 """
 Given two leadfields and a set of 2D electrode positions, plot them both and their difference (lf2-lf1)
 """
-function topoplot_leadfields_difference(lf1,lf2,pos2d, commoncolorrange=true)
+function topoplot_leadfields_difference(lf1,lf2,pos2d; labels=["","","",""], commoncolorrange=true)
     # from UnfoldSim docs - multichannel example
-	f = Figure()
+	f = Figure(size=(750, 700))
     max, min = maximum([lf1 lf2]), minimum([lf1 lf2])
+    Label(f[1,1][1, 1:2, Top()], labels[1], valign = :bottom, font = :bold, padding = (0, 0, 5, 30))
+	Label(f[1,2][1, 1:2, Top()], labels[2], valign = :bottom, font = :bold, padding = (0, 0, 5, 30))
+	Label(f[2,1][1, 1:2, Top()], labels[3], valign = :bottom, font = :bold, padding = (0, 0, 5, 30))
+	Label(f[2,2][1, 1:2, Top()], labels[4], valign = :bottom, font = :bold, padding = (0, 0, 5, 30))
     if (commoncolorrange)
         plot_topoplot!(
             f[1,1], lf1, positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = false,colorrange=(min,max)))

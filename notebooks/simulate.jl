@@ -251,16 +251,6 @@ begin
 	# f_inspect
 end
 
-# ╔═╡ d5c0f30e-5c12-4035-b4fa-342ac7657e30
-begin
-	# L-R movement - full left to full right
-	topoplot_leadfields_difference(
-		leadfield_from_gazedir(eyemodel, em_sim_idx, [-1 0 0], 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, [1 0 0], 54.0384),
-		pos2dfrom3d(pos3d)
-	)
-	""
-end
-
 # ╔═╡ d01ef98f-1fd7-41ec-b8f3-f7aa154e4c84
 begin
 	# L-R movement - 35deg left to 35deg right
@@ -283,7 +273,7 @@ begin
 	@info "horizontal L-R -/+17deg"
 	topoplot_leadfields_difference(
 		leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-17), 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(17), 54.0384),
-		pos2dfrom3d(pos3d), false
+		pos2dfrom3d(pos3d); commoncolorrange=false
 	)
 end
 
@@ -293,7 +283,7 @@ begin
 	@info "vertical movement: -35deg to +35deg "
 	f_vertical = topoplot_leadfields_difference(
 		leadfield_from_gazedir(eyemodel, em_sim_idx, gv_angle_3d(0, -35), 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, gv_angle_3d(0, 35), 54.0384),
-		pos2dfrom3d(pos3d), true
+		pos2dfrom3d(pos3d); commoncolorrange=true
 	)
 end
 
@@ -423,7 +413,7 @@ begin
 	topoplot_leadfields_difference(
 		LF_A, 
 		LF_B,
-		pos2dfrom3d(pos3d), false
+		pos2dfrom3d(pos3d); commoncolorrange=false
 	)
 end
 
@@ -444,7 +434,7 @@ end
 # ╔═╡ 6ff30595-de0a-4f57-8d24-0c3c120f7f04
 	topoplot_leadfields_difference(
 		edm.*10e3, (LF_B-LF_A).*10e3,
-		pos2dfrom3d(pos3d), false
+		pos2dfrom3d(pos3d); commoncolorrange=false
 	)
 
 # ╔═╡ 9c28c405-a62f-43ed-beba-38ebc08ceeec
@@ -457,7 +447,7 @@ begin
 	crd_B = equiv_dipole_mag(deepcopy(eyemodel),equiv_dipole_idx,[crd_L_or; crd_L_or])
 	topoplot_leadfields_difference(
 		crd_A.*10e3, crd_B.*10e3,
-		pos2dfrom3d(pos3d), false
+		pos2dfrom3d(pos3d); labels = ["CRD pos A", "CRD pos B", "Difference","Difference plotted with electrodes"], commoncolorrange=false
 	)
 end
 
@@ -467,13 +457,13 @@ begin
 	# difference - CRD vs B&S equivalent dipoles
 	topoplot_leadfields_difference(
 		(crd_B - crd_A).*10e3, edm.*10e3,
-		pos2dfrom3d(pos3d), false
+		pos2dfrom3d(pos3d); commoncolorrange=false
 	)
 end
 
 # ╔═╡ f2f265c0-75f0-4d6f-92b6-c21ac6420b39
 begin
-	f = Figure()
+	f = Figure(size=(750, 700))
 	plot_topoplot!(
 		f[1,1], (LF_B-LF_A).*10e3, positions=pos2dfrom3d(pos3d), layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false))
 	plot_topoplot!(
@@ -482,10 +472,17 @@ begin
 		f[2,1], edm.*10e3, positions=pos2dfrom3d(pos3d), layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
 	plot_topoplot!(
 		f[2,2], edm.*10e3, positions=pos2dfrom3d(pos3d), layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = true),)
-	l1 = Label(f[0,1],"Our model")
-	l2 = Label(f[0,2],"Resultant dipole CRD")
-	l3 = Label(f[3,1],"B-S difference dipoles")
-	l4 = Label(f[3,2],"DD with electrodes")
+	# ax1.title = "Our model"
+		# l1 = Label(f[0,1],"Our model")
+	Label(f[1,1][1, 1:2, Top()], "Our model", valign = :bottom, font = :bold, padding = (0, 0, 5, 0))
+	Label(f[1,2][1, 1:2, Top()], "Resultant dipole CRD", valign = :bottom, font = :bold, padding = (0, 0, 5, 0))
+	Label(f[2,1][1, 1:2, Top()], "B-S difference dipoles", valign = :bottom, font = :bold, padding = (0, 0, 5, 0))
+	Label(f[2,2][1, 1:2, Top()], "DD with electrodes", valign = :bottom, font = :bold, padding = (0, 0, 5, 0))
+	# l2 = Label(f[0,2],"Resultant dipole CRD")
+	# l3 = Label(f[3,1],"B-S difference dipoles")
+	# l4 = Label(f[3,2],"DD with electrodes")
+	# ax1.title = "Our model"
+	# @info ax1
 	f
 end
 
@@ -3039,7 +3036,6 @@ version = "3.6.0+0"
 # ╠═08a4b6a5-db09-4957-aa7e-70946109c521
 # ╠═e29d815a-9b9b-481b-abe7-865222f961d8
 # ╠═4ebe1996-7d27-4c38-90bb-a78466fbcf66
-# ╠═d5c0f30e-5c12-4035-b4fa-342ac7657e30
 # ╠═d01ef98f-1fd7-41ec-b8f3-f7aa154e4c84
 # ╠═6b67ee46-6c2c-401c-924c-3470631f11c7
 # ╠═4de0ecc8-d272-4750-9d97-b69776c03115
