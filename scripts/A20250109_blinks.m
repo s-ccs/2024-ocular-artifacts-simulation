@@ -1,10 +1,8 @@
 addpath('/store/users/skukies/TonalLang/lib/eeglab')
 eeglab redraw
-sub = 23
+sub = 30
 folder = sprintf('/store/data/non-bids/WLFO/VP%i/preprocessed/',sub)
 EEG = pop_loadset('filename',fullfile(folder,sprintf('3_ITW_WLFO_subj%i_channelrejTriggersXensor.set',sub)));
-
-% tmp = load(fullfile(folder,'causal',sprintf('3_ITW_WLFO_subj%i_channelrejTriggersXensor.mat',sub)));
 
 EEG = pop_select(EEG,'nochannel',find({EEG.chanlocs.labels}=="AUX1"));
 EEG = pop_select(EEG,'nochannel',find({EEG.chanlocs.labels}=="AUX2"));
@@ -21,137 +19,62 @@ EEG.icachansind = 1:size(EEG.data,1);
 % plot IC topoplots
 pop_topoplot(EEG, 0, [1:10] ,'',[4 3] ,0,'electrodes','off');
 
-% plot IC over time
-pop_eegplot( EEG, 0, 1, 1);
-
-% plot data voer time
-pop_eegplot( EEG, 1, 1, 1);
-
-%%
-params = checkBlinkerDefaults(struct(), getBlinkerDefaults(EEG));
-params.signalTypeIndicator = 'UseLabels';
-params.signalLabels={'heog','veog','fp1'  'f1'  'fp2'  'fz'  'fpz'  'f3'  'f4'  'f2'}
-
-[EEG, com, blinks, blinkFits, blinkProperties, blinkStatistics, params] = pop_blinker(EEG,params);
-
-
-EEG.old_event = EEG.event;
-myCellArray = num2cell(blinks.signalData.blinkPositions(1,:)); % Convert to cell array
-myStructArray = cell2struct(myCellArray, {'latency'}); % Create struct array
-
-for e  = 1:length(myStructArray)
-    myStructArray(e).type = 'blink';
-end
-EEG.event = myStructArray';
 EEG =eeg_checkset(EEG,'eventconsistency');
-EEGep = pop_epoch( EEG, {  }, [-0.3           1], 'newname', 'blinks', 'epochinfo', 'yes');
 
-EEGep = pop_select(EEGep,'nochannel',find({EEGep.chanlocs.labels}=="VEOG"));
 
-erp = trimmean(EEGep.data,20,'round',3);
+%% plot saccades: first define parameters
 
-erp_bslcorrected = erp - mean(erp(:,1:100),2);
-erp_bslcorrected_normed = erp_bslcorrected./std(erp_bslcorrected);
-erp_normed = erp./std(erp);
-%%
-t_ix = [100 137 151 164 175 186 221 260 480]
+amp_range = [9.5 15.5]; 
+is_L_saccade = {EEG.event.type} == "L_saccade"; % L_saccade means it is a saccade with the left eye
+amps_in_range = [EEG.event.sac_amplitude]<=amp_range(2) & [EEG.event.sac_amplitude]>=amp_range(1);
+valid_endtime = [EEG.event.endtime] < length(EEG.times); % some of the saccades have invalid endtimes beyond the range of the recording
+
+
+% horizontal saccades
+center_range_horiz = [1900 1940]; % center 1920
+vertdiff_max = 500;
+small_vertical = abs(([EEG.event.sac_startpos_y] -[EEG.event.sac_endpos_y]))<vertdiff_max;
+start_center_horizontal = [EEG.event.sac_startpos_x]>=center_range_horiz(1) & [EEG.event.sac_startpos_x]<=center_range_horiz(2);
+
+% vertical saccades
+center_range_vert = [1040 1120]; % center 1080
+horizdiff_max = 500;
+small_horizontal = abs(([EEG.event.sac_startpos_x] -[EEG.event.sac_endpos_x]))<horizdiff_max;
+start_center_vertical = [EEG.event.sac_startpos_y]>=center_range_vert(1) & [EEG.event.sac_startpos_y]<=center_range_vert(2);
+% find(start_center & small_vertical & amps_in_range & is_L_saccade)
+
+% to plot topoplot at specific index
+% ix = 7481; figure,topoplot(EEG.data(:,round(EEG.event(ix).latency + 200))-EEG.data(:,round(EEG.event(ix).latency-200)),EEG.chanlocs)
+
+
+
+%% plot horizontal saccades (with small vertical movement)
+
+start_center = start_center_horizontal;
+i_sac = start_center & small_vertical & amps_in_range & is_L_saccade & valid_endtime; idx_sac = find(i_sac)
 figure
-subplot(2,2,1)
-plot(erp')
-xline(t_ix)
-title("erp")
-subplot(2,2,2)
-plot(erp_bslcorrected')
-xline(t_ix)
-title("erp+bslcorrect")
-
-subplot(2,2,3)
-plot(erp_normed')
-xline(t_ix)
-title("erp std-normed")
-subplot(2,2,4)
-plot(erp_bslcorrected_normed')
-xline(t_ix)
-title("erp+bslcorrect std-normed")
-%%
+sgtitle(strcat("Horizontal saccades", " sub=", num2str(sub), " vert diff<=", num2str(vertdiff_max) ))
+k =1; rows=ceil(sum(i_sac)/3); row=1; col=1;
+for ix = idx_sac
+    ax = subplot(rows,3,k);
+    titletext = strcat("E" , num2str(ix) , "; start ", num2str(EEG.event(ix).sac_startpos_x), " ampl=", num2str(EEG.event(ix).sac_amplitude), ", xdiff=", num2str(EEG.event(ix).sac_endpos_x - EEG.event(ix).sac_startpos_x), "; ydiff= ", num2str(EEG.event(ix).sac_endpos_y - EEG.event(ix).sac_startpos_y))
+    %titletext = strcat("E" , num2str(ix) , "; start ", num2str(EEG.event(ix).sac_startpos_x), " ampl=", num2str(EEG.event(ix).sac_amplitude), ", xdiff=", num2str(EEG.event(ix).sac_endpos_x - EEG.event(ix).sac_startpos_x), "; ydiff= ", num2str(EEG.event(ix).sac_endpos_y - EEG.event(ix).sac_startpos_y))
+    topoplot(EEG.data(:,round(EEG.event(ix).endtime))-EEG.data(:,round(EEG.event(ix).latency)),EEG.chanlocs); title(textwrap(titletext,40))
+    k=k+1
+    ax.Position(2) = ax.Position(2)*0.85;
+end
 
 
-erp_plot = erp_bslcorrected_normed;
-%erp_plot = erp_normed;
+%% plot vertical saccades (with small horizontal movement)
+start_center = start_center_vertical;
+i_sac = start_center & small_horizontal & amps_in_range & is_L_saccade & valid_endtime; idx_sac = find(i_sac)
 figure
-k =1
-for t = t_ix
-    subplot(2,9,k)  
-    
-topoplot(erp_plot(:,t),EEG.chanlocs);
-if t == 186
-    k = k+1
-    continue
+sgtitle(strcat("vertical saccades", "; sub=", num2str(sub), "; horiz diff<=", num2str(horizdiff_max) ))
+k =1;
+for ix = idx_sac
+    ax = subplot(ceil(sum(i_sac)/3),3,k);  
+    titletext = strcat("E" , num2str(ix) , "; start ", num2str(EEG.event(ix).sac_startpos_y), " ampl=", num2str(EEG.event(ix).sac_amplitude), ", xdiff=", num2str(EEG.event(ix).sac_endpos_x - EEG.event(ix).sac_startpos_x), "; ydiff= ", num2str(EEG.event(ix).sac_endpos_y - EEG.event(ix).sac_startpos_y))
+    topoplot(EEG.data(:,round(EEG.event(ix).endtime))-EEG.data(:,round(EEG.event(ix).latency)),EEG.chanlocs); title(titletext)
+    k=k+1
+    ax.Position(2) = ax.Position(2)*0.85;
 end
-subplot(2,9,k+9)  
-k = k+1;
-
-topoplot(erp_plot(:,t)-erp_plot(:,186),EEG.chanlocs);
-
-end
-
-%%
-[coeff,score,latent,tsquared,explained,mu] = pca(erp');
-explained(1:5)
-figure
-for p = 1:5
-    subplot(1,5,p)
-    topoplot(coeff(:,p),EEG.chanlocs);
-end
-%%
-erp_ica = trimmean(EEGep.icaact,20,'round',3);
-pop_topoplot(EEG, 0, [1:10] ,'blnks',[3 4] ,0,'electrodes','off');
-
-figure,plot(erp_ica([1,2,3,4,5],:)')
-
-%% find closest fixatio or saccade for x/y position
-fix_events = EEG.old_event({EEG.old_event.type} == "L_fixation");
-latlist_fix = [fix_events.latency];
-
-for e = 1:length(EEG.event)
-    blink_ev = EEG.event(e);
-    [dist,ix] = min(blink_ev.latency - latlist_fix(latlist_fix<blink_ev.latency));
-    if dist < EEG.srate*2  % X seconds distance is still fine
-        e
-        EEG.event(e).x = fix_events(ix).fix_avgpos_x;
-        EEG.event(e).y = fix_events(ix).fix_avgpos_y;
-    else
-        EEG.event(e).x = NaN;
-        EEG.event(e).y = NaN;
-    end
-end
-
-
-%%
-right_trials = [EEG.event.x]>2000;
-
-left_trials = [EEG.event.x]<2000;
-sum(right_trials)
-sum(left_trials)
-
-
-erp_ica_right = trimmean(EEGep.icaact(:,:,right_trials),20,'round',3);
-erp_ica_left = trimmean(EEGep.icaact(:,:,left_trials),20,'round',3);
-pop_topoplot(EEG, 0, [1:10] ,'blnks',[3 4] ,0,'electrodes','off');
-
-figure,plot(erp_ica_right([1,2,3,4,5],:)')
-figure,plot(erp_ica_left([1,2,3,4,5],:)')
-
-
-
-%% plot left / right saccades (without vertical movement)
-
-
-small_vertical = abs(([EEG.event.sac_startpos_y] -[EEG.event.sac_endpos_y]))<10;
-is_saccade = {EEG.event.type} == "L_saccade";
-amps = [EEG.event.sac_amplitude];
-
-find(small_vertical & amps>15 & is_saccade)
-
-
-ix = 7481; figure,topoplot(EEG.data(:,round(EEG.event(ix).latency + 200))-EEG.data(:,round(EEG.event(ix).latency-200)),EEG.chanlocs)
