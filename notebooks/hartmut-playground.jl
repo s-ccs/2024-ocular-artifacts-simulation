@@ -556,18 +556,18 @@ PlutoUI = "~0.7.61"
 StableRNGs = "~1.0.2"
 Statistics = "~1.11.1"
 TopoPlots = "~0.2.2"
-UnfoldMakie = "~0.5.8"
+UnfoldMakie = "~0.5.13"
 UnfoldSim = "~0.3.2"
-WGLMakie = "~0.10.11"
+WGLMakie = "~0.10.18"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.11.2"
+julia_version = "1.11.3"
 manifest_format = "2.0"
-project_hash = "d535c7247a5b209c258d6812de9635861797971b"
+project_hash = "dae3806d69cf026d1c343921f198be62eb35b540"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
