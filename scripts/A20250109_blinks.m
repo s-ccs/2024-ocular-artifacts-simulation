@@ -1,6 +1,6 @@
 addpath('/store/users/skukies/TonalLang/lib/eeglab')
 eeglab redraw
-sub = 30
+sub = 10
 folder = sprintf('/store/data/non-bids/WLFO/VP%i/preprocessed/',sub)
 EEG = pop_loadset('filename',fullfile(folder,sprintf('3_ITW_WLFO_subj%i_channelrejTriggersXensor.set',sub)));
 
@@ -10,15 +10,16 @@ EEG = pop_select(EEG,'nochannel',find({EEG.chanlocs.labels}=="AUX2"));
 %EEG = pop_select(EEG,'nochannel',find({EEG.chanlocs.labels}=="HEOG"));
 mods = loadmodout15(sprintf('/store/data/non-bids/WLFO/VP%i/preprocessed/amica',sub));
 
-model_index = 1;
-EEG.icawinv = mods.A(:,:,model_index);
-EEG.icaweights = mods.W(:,:,model_index);
-EEG.icasphere = mods.S(1:size(mods.W,1),:);
-EEG.icachansind = 1:size(EEG.data,1);
+% model_index = 1;
+% EEG.icawinv = mods.A(:,:,model_index);
+% EEG.icaweights = mods.W(:,:,model_index);
+% EEG.icasphere = mods.S(1:size(mods.W,1),:);
+% EEG.icachansind = 1:size(EEG.data,1);
 %%
 % plot IC topoplots
-pop_topoplot(EEG, 0, [1:10] ,'',[4 3] ,0,'electrodes','off');
-
+% pop_topoplot(EEG, 0, [1:10] ,'',[4 3] ,0,'electrodes','off');
+% pop_eegplot(EEG, 0, 1, 1)
+% pop_eegplot(EEG, 1, 1, 1)
 EEG =eeg_checkset(EEG,'eventconsistency');
 
 
@@ -57,11 +58,11 @@ sgtitle(strcat("Horizontal saccades", " sub=", num2str(sub), " vert diff<=", num
 k =1; rows=ceil(sum(i_sac)/3); row=1; col=1;
 for ix = idx_sac
     ax = subplot(rows,3,k);
-    titletext = strcat("E" , num2str(ix) , "; start ", num2str(EEG.event(ix).sac_startpos_x), " ampl=", num2str(EEG.event(ix).sac_amplitude), ", xdiff=", num2str(EEG.event(ix).sac_endpos_x - EEG.event(ix).sac_startpos_x), "; ydiff= ", num2str(EEG.event(ix).sac_endpos_y - EEG.event(ix).sac_startpos_y))
+    titletext = strcat("E" , num2str(ix) , "; start x=", num2str(EEG.event(ix).sac_startpos_x), " ampl=", num2str(EEG.event(ix).sac_amplitude), ", xdiff=", num2str(EEG.event(ix).sac_endpos_x - EEG.event(ix).sac_startpos_x), "; ydiff= ", num2str(EEG.event(ix).sac_endpos_y - EEG.event(ix).sac_startpos_y))
     %titletext = strcat("E" , num2str(ix) , "; start ", num2str(EEG.event(ix).sac_startpos_x), " ampl=", num2str(EEG.event(ix).sac_amplitude), ", xdiff=", num2str(EEG.event(ix).sac_endpos_x - EEG.event(ix).sac_startpos_x), "; ydiff= ", num2str(EEG.event(ix).sac_endpos_y - EEG.event(ix).sac_startpos_y))
     topoplot(EEG.data(:,round(EEG.event(ix).endtime))-EEG.data(:,round(EEG.event(ix).latency)),EEG.chanlocs); title(textwrap(titletext,40))
     k=k+1
-    ax.Position(2) = ax.Position(2)*0.85;
+    ax.Position(2) = ax.Position(2)*0.90;
 end
 
 
@@ -73,8 +74,8 @@ sgtitle(strcat("vertical saccades", "; sub=", num2str(sub), "; horiz diff<=", nu
 k =1;
 for ix = idx_sac
     ax = subplot(ceil(sum(i_sac)/3),3,k);  
-    titletext = strcat("E" , num2str(ix) , "; start ", num2str(EEG.event(ix).sac_startpos_y), " ampl=", num2str(EEG.event(ix).sac_amplitude), ", xdiff=", num2str(EEG.event(ix).sac_endpos_x - EEG.event(ix).sac_startpos_x), "; ydiff= ", num2str(EEG.event(ix).sac_endpos_y - EEG.event(ix).sac_startpos_y))
-    topoplot(EEG.data(:,round(EEG.event(ix).endtime))-EEG.data(:,round(EEG.event(ix).latency)),EEG.chanlocs); title(titletext)
+    titletext = strcat("E" , num2str(ix) , "; start y=", num2str(EEG.event(ix).sac_startpos_y), " ampl=", num2str(EEG.event(ix).sac_amplitude), ", xdiff=", num2str(EEG.event(ix).sac_endpos_x - EEG.event(ix).sac_startpos_x), "; ydiff= ", num2str(EEG.event(ix).sac_endpos_y - EEG.event(ix).sac_startpos_y))
+    topoplot(EEG.data(:,round(EEG.event(ix).endtime))-EEG.data(:,round(EEG.event(ix).latency)),EEG.chanlocs); title(textwrap(titletext,40))
     k=k+1
     ax.Position(2) = ax.Position(2)*0.85;
 end
