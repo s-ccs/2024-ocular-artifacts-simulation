@@ -150,3 +150,55 @@ end
 function angle(a,b) 
     return acosd.(dot(a, b)/(norm(a)*norm(b)))
 end
+
+
+
+
+function gazevec_from_angle(angle_deg)
+	# just x,y plane for now. gaze angle measured from front neutral gaze, not from x-axis
+	return [sind(angle_deg) cosd(angle_deg) 0]
+end
+
+
+function gv_angle_3d(angle_H, angle_V)
+	# angles measured from center gaze position - use complementary angle for θ 
+	return Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(90-angle_H), deg2rad(angle_V))))
+end
+
+
+function weights_from_gazedir(model, sim_idx, gazedir, max_cornea_angle_deg)
+	eyeweights = zeros(size(model["pos"])[1]) # all sources other than those defined by sim_idx will be set to zero magnitude 
+	eyeweights[sim_idx] .= mapslices(x -> is_corneapoint(x,gazedir,max_cornea_angle_deg), model["orientation"][sim_idx,:],dims=2)
+	return eyeweights
+end
+
+
+function is_corneapoint(orientation, gazedir, max_cornea_angle_deg)
+	if(angle(orientation,gazedir)<=max_cornea_angle_deg)
+		return 1
+	else 
+		return -1
+	end
+end
+
+
+function leadfield_from_gazedir(model, sim_idx, gazedir, max_cornea_angle_deg)
+	mag_model = magnitude(model["leadfield"],model["orientation"])
+	source_weights = zeros(size(model["pos"])[1]) # all sources other than those defined by sim_idx will be set to zero magnitude 
+	source_weights[sim_idx] .= mapslices(x -> is_corneapoint(x,gazedir,max_cornea_angle_deg), model["orientation"][sim_idx,:],dims=2)
+
+	# or, indirectly, 
+	# weights = weights_from_gazedir(model, sim_idx, gazedir, max_cornea_angle_deg)
+	
+	weighted_sum = sum(mag_model[:,idx].* source_weights[idx] for idx in sim_idx,dims=2)
+	return weighted_sum
+end
+
+
+function equiv_dipole_mag(model,idx,equiv_orientations)
+	# take just a selected subset of points in the model, along with new orientations for those points, and calculate the sum of leadfields of just these points with the new orientations. 
+	equiv_ori_model = model["orientation"]
+	equiv_ori_model[idx,:] .= equiv_orientations[1:length(idx),:]
+	mag_eyemodel_equiv = magnitude(eyemodel["leadfield"],equiv_ori_model)
+	mag = sum(mag_eyemodel_equiv[:,ii] for ii in idx)
+end
