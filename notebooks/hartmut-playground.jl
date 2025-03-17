@@ -531,6 +531,71 @@ end
 # 	return f
 # end
 
+# ╔═╡ fcdc2cf9-ddb5-41ec-a310-9e607375a6a0
+begin
+	sel_electrodes = [7,8, 159, 147, 150, 164]
+		# [7,8, 120, 121, 157, 158, 159, 151, 154, 147, 150] # collect(157:159) # [120, 121 ] #
+	@info typeof(sel_electrodes)
+	@info typeof(findall(k->occursin(artefactlabels[x],k),model["label"][:]))
+end
+
+# ╔═╡ 0430bf2d-8ec4-489f-a0b4-a6c8d6d3071b
+begin
+	f_electrodes = WGLMakie.scatter(hartmut.electrodes["pos"], alpha=0.4, color="grey")
+	# WGLMakie.scatter!(model["pos"], alpha=0.4, color="grey")
+	# WGLMakie.scatter!(model["pos"][vcat(labelsourceindices["Cornea"]),:], alpha=0.4, color="yellow")
+	# WGLMakie.scatter!(model["pos"], alpha=0.1, color="grey")
+	# optional: plot points for a specific label (select value from UI spinner with @bind x)
+	vec = hartmut.electrodes["pos"][sel_electrodes,:]
+	@info typeof(vec)
+	# v = [
+	# 	# vec...; 
+	# 	0 0 0;
+	# ]
+	# WGLMakie.scatter!(hartmut.electrodes["pos"][1,:]);
+	WGLMakie.scatter!(vec', color="red");
+	@info vec
+	# @info "currently inspecting electrodes: ", sel_electrodes	
+	f_electrodes
+end
+
+# ╔═╡ 00923ca5-edb6-481e-9634-3b552ec7290a
+hartmut.electrodes
+
+
+# ╔═╡ 2ef19a57-6de7-4e2c-9568-b85360322df3
+begin
+	# reference: Cz? Like in our caps? Does it make sense to have a reference for a static point in time? But then we're not looking at a static point. we're taking the difference from t=0 centre gaze. So our B-A is already an EEG signal value at time point t. Or is it? in eeg are we taking the difference from a reference electrode rather than from a time point?
+end
+
+# ╔═╡ 800ca02e-f196-426d-b8c1-5a0a036ed428
+begin
+	norm_chan_locs = hart_small.electrodes["pos"]
+	norm_src_locs = model["pos"]
+	max_chan = maximum(norm_chan_locs,dims=1)
+	min_chan = minimum(norm_chan_locs,dims=1)
+	max_src = maximum(norm_src_locs,dims=1)
+	min_src = minimum(norm_src_locs,dims=1)
+	diff_chan = max_chan .- min_chan
+	diff_src = max_src .- min_src
+
+	@info norm_chan_locs .- min_chan
+	norm_chan_locs = ((norm_chan_locs .- min_chan) .* (diff_src./diff_chan)) .+ min_src
+	norm_chan_locs[:,3] = norm_chan_locs[:,3] .+ 75
+
+	sel_pos = norm_chan_locs[sel_electrodes,:]
+	f_combinedlocs = WGLMakie.scatter(norm_chan_locs, alpha=0.15, color="blue")
+	WGLMakie.scatter!(norm_src_locs[labelsourceindices["Cornea"],:], alpha=0.4, color="grey")
+	WGLMakie.scatter!(norm_src_locs[labelsourceindices["Retina"],:], alpha=0.4, color="grey")
+	# WGLMakie.scatter!(norm_src_locs[120,:], alpha=0.8, color="pink")
+	WGLMakie.scatter!(sel_pos', alpha=01, color="red")
+	f_combinedlocs
+
+end
+
+# ╔═╡ 72db3c45-b560-4d0e-a3e3-4052bf4060c1
+model
+
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
@@ -3052,7 +3117,7 @@ version = "3.6.0+0"
 # ╠═2fde0e5e-7543-4149-bf74-9b65573cc462
 # ╠═09258399-2468-45f8-ba35-b244ffe21373
 # ╠═e69e6c73-a4f1-4efb-8ba7-b9e9e20305e4
-# ╟─5b85e5e3-13c4-4584-982e-044984d37ea0
+# ╠═5b85e5e3-13c4-4584-982e-044984d37ea0
 # ╠═55d651d4-feea-470f-8640-e542a4620c36
 # ╠═b4bd229e-2f51-4df3-adf2-3d566d4f9374
 # ╠═b6d9426a-1632-4fc7-a8eb-6fde0c60f0cb
@@ -3085,5 +3150,11 @@ version = "3.6.0+0"
 # ╠═67f0e0a2-16ea-4930-bec2-556a3f954bee
 # ╠═41b27ecd-d080-400f-bf47-281e5fca2cca
 # ╠═6d27dc13-6098-4692-a029-2598c97ed700
+# ╠═0430bf2d-8ec4-489f-a0b4-a6c8d6d3071b
+# ╠═fcdc2cf9-ddb5-41ec-a310-9e607375a6a0
+# ╠═00923ca5-edb6-481e-9634-3b552ec7290a
+# ╠═2ef19a57-6de7-4e2c-9568-b85360322df3
+# ╠═800ca02e-f196-426d-b8c1-5a0a036ed428
+# ╠═72db3c45-b560-4d0e-a3e3-4052bf4060c1
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
