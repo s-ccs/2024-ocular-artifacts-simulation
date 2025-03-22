@@ -65,32 +65,32 @@ begin
 				,"left" # for intermediate eyemodel; there are only eye points and no symmetric (leftright) sources
 				,"right" # ditto here
 			]
-	# TODO: add label search term for complete L/R eye (instead of separate retina/cornea) and one for all L&R/retina&cornea points
-	# TODO: add label to select only one set of cornea sources: horizontal or vertical oriented
+	"set the list of labels for which we will pre-find indices"
 end
 
 # ╔═╡ fa7aaded-fcd1-4049-a611-462115614910
 begin
-	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_hull_mesh8_2025-03-01.mat")
-	# eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_sphere_mesh8_2025-03-01.mat")
-	# eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_new_2025-02-10.mat")
+	# eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_hull_mesh8_2025-03-01.mat")
+	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_sphere_mesh8_2025-03-01.mat")
 	remove_indices = [164, 165, 166, 167] # since eyemodel structure doesn't exactly correspond to the main hartmut mat structure expected by the read_new_hartmut function, just get the indices of the electrodes that it drops & drop the same indices from eyemodel directly 
 	eyemodel["leadfield"] = eyemodel["leadfield"][Not(remove_indices), :, :]
 	@info size(eyemodel["pos"])
-	""
+	"load eyemodel and remove electrodes like in read_new_hartmut"
 end
 
 # ╔═╡ 3756412a-0715-4ae4-9e32-f46978e60a38
 begin
-	# import small headmodel temporarily for electrode positions, since eyemodel does not include them
+	# import small headmodel for electrode positions, since eyemodel does not include them
 	hart_small = UnfoldSim.headmodel()
 	pos3d = hart_small.electrodes["pos"]
-	""
+	electrode_pos = pos2dfrom3d(pos3d)
+	"get electrode positions from small headmodel"
 end
 
 # ╔═╡ fe8025c9-3f52-401f-bbdb-60d0dffafd2a
 begin
-	lsi_eyemodel = hart_indices_from_labels(eyemodel,labels) 
+	# find indices for specific source labels
+	lsi_eyemodel = hart_indices_from_labels(eyemodel,labels)
 	# sanity check for the earlier eyemodels: retina and cornea should have similar number of points. in the full headmodel there are two sets of points for the cornea (horizontal/vertical orientations), but in the intermediate eyemodels there are just the source points so no duplication.
 	# after new eyemodel with more uniform distribution: cornea should have fewer points than retina.
 end
@@ -257,7 +257,8 @@ begin
 		return eyeweights
 	end
 	function is_corneapoint(orientation, gazedir, max_cornea_angle_deg)
-		if(angle(orientation,gazedir)<=max_cornea_angle_deg)
+		if(angle_between(orientation,gazedir)<=max_cornea_angle_deg)
+		# if(gv_angle_3d(orientation,gazedir)<=max_cornea_angle_deg)
 			return 1
 		else 
 			return -1
@@ -362,7 +363,7 @@ begin
 	@info "vertical movement: 0deg to +15deg "
 	f_vertical = topoplot_leadfields_difference(
 		leadfield_from_gazedir(eyemodel, em_sim_idx, gv_angle_3d(0, 0), 54.0384).*10e3, leadfield_from_gazedir(eyemodel, em_sim_idx, gv_angle_3d(0, 15), 54.0384).*10e3,
-		pos2dfrom3d(pos3d); labels = ["Ensemble - position A", "Ensemble - position B", "Ensemble - 15deg upwards","Difference plotted with electrodes"], commoncolorrange=false
+		pos2dfrom3d(pos3d); labels = ["Ensemble - position A", "Ensemble - position B", "Ensemble, 15° upwards","Difference plotted with electrodes"], commoncolorrange=false
 	)
 end
 
@@ -432,11 +433,11 @@ begin
 	# for comparing with resultant dipole and Berg&scherg equivalent dipole, 0 to -15 deg
 	@info "Our method: horizontal C-L 0 to -10deg"
 	LF_A = leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(0), 54.0384)
-	LF_B = leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-10), 54.0384)
+	LF_B = leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-15), 54.0384)
 	topoplot_leadfields_difference(
 		LF_A.*10e3, 
 		LF_B.*10e3,
-		pos2dfrom3d(pos3d); labels = ["Ensemble - position A", "Ensemble - position B", "Ensemble, 10deg Center-Left, with cornea","Difference plotted with electrodes"], commoncolorrange=false
+		pos2dfrom3d(pos3d); labels = ["Ensemble - position A", "Ensemble - position B", "Ensemble, 15° leftwards","Difference plotted with electrodes"], commoncolorrange=false
 	)
 end
 
@@ -454,12 +455,6 @@ begin
 	@info maximum(LF_B-LF_A), minimum(LF_B-LF_A)
 end
 
-# ╔═╡ 6ff30595-de0a-4f57-8d24-0c3c120f7f04
-	# topoplot_leadfields_difference(
-	# 	edm.*10e3, (LF_B-LF_A).*10e3,
-	# 	pos2dfrom3d(pos3d); commoncolorrange=false
-	# )
-
 # ╔═╡ 9c28c405-a62f-43ed-beba-38ebc08ceeec
 begin
 	# CRD 0 (front) to -15 (LHS)
@@ -467,13 +462,13 @@ begin
 	# crd_B_or = gazevec_from_angle(-15)
 
 	# CRD 0 (front) to +15y (up)
-	crd_B_or = gv_angle_3d(0, 15)'
+	crd_B_or = gv_angle_3d(-15, 0)'
 	@info crd_A_or, crd_B_or
 	crd_A = equiv_dipole_mag(deepcopy(eyemodel),equiv_dipole_idx,[crd_A_or; crd_A_or])
 	crd_B = equiv_dipole_mag(deepcopy(eyemodel),equiv_dipole_idx,[crd_B_or; crd_B_or])
 	topoplot_leadfields_difference(
 		crd_A.*10e3, crd_B.*10e3,
-		pos2dfrom3d(pos3d); labels = ["CRD pos A", "CRD pos B", "CRD - Difference (B - A), with cornea","Difference plotted with electrodes"], commoncolorrange=false
+		pos2dfrom3d(pos3d); labels = ["CRD pos A", "CRD pos B", "CRD, 15° leftwards","Difference plotted with electrodes"], commoncolorrange=false
 	)
 end
 
@@ -510,9 +505,69 @@ begin
 	# ax1.title = "Our model"
 	# @info ax1
 	# f
-	""
+	"Calling and labelling topoplots individually instead of using utility function"
 end
 
+
+# ╔═╡ 48d86efe-d2cb-4611-8126-3ad7cfd85df1
+begin
+	""" 
+	Simulate the resultant leadfield for the given gaze vector, as the sum of leadfields from all sources at `sim_idx` in `model`.  
+	"""
+	function lf_for_angle(model, sim_idx, gaze_vector; cornea_angle_deg = 54.0384)
+		
+	end
+
+	""" 
+	Simulate the resultant leadfield for the given trajectory (one or more gaze vectors), as the sum of leadfields from all sources at `sim_idx` in `model`.  
+	"""
+	function lf_for_trajectory(model, gaze_vectors; sim_idx = collect(1:size(model["leadfield"])[2]), max_cornea_angle_deg = 54.0384, weights = zeros(size(model["leadfield"])[2]))
+
+	@info length(gaze_vectors)
+		# possible improvement: check if the result is zero and give a warning? Or maybe not - it's technically possible that srcs with diff orientations and magnitudes can give a resultant zero 
+	
+		# calculate magnitude of the model using the given orientations 
+		mag_model = magnitude(model["leadfield"],model["orientation"])
+		
+		# by default, all sources other than those defined by sim_idx will be set to zero magnitude 
+		# old: # source_weights = zeros(size(model["pos"])[1]) 
+		
+		
+		
+		lf = zeros(size(eyemodel["leadfield"])[1],size(gaze_vectors)[1]);
+		@info gaze_vectors, lf
+		for ix in 1:size(gaze_vectors)[1]
+			weights[sim_idx] .= mapslices(x -> is_corneapoint(x,gaze_vectors[ix,:],max_cornea_angle_deg), model["orientation"][sim_idx,:],dims=2);
+			
+			lf[:,ix] = sum(mag_model[:,idx].* weights[idx] for idx in sim_idx,dims=2)
+				
+				# leadfield_from_gazedir(eyemodel, em_sim_idx,
+				# 				gd_angle_horiz[ix]
+				# 				, 54.0384).*10e3
+		end
+		return lf
+	end
+
+	# TODO add new orientations for specified points and 0 magnitude for all other points
+end
+
+# ╔═╡ 8fb3fc94-f9c3-4fee-93f0-95f5f6b1bc0f
+# size(eyemodel["leadfield"])
+size(eyemodel["leadfield"])
+
+# ╔═╡ 669a3b99-fb8e-4874-b2b7-46aa13e16a54
+begin
+	gv = [[0 0 0]; [1 1 1]]
+	@info size(gv)[1]
+	lf_for_trajectory(deepcopy(eyemodel), [[0 0 0]; [1 1 1]])
+end
+
+# ╔═╡ 43a4fd5c-4067-4e8e-94b9-5af307981372
+# methods(angle)
+lsi_eyemodel["EyeCornea_left"] 
+
+# ╔═╡ 3fa794ed-b4dc-4ccd-8644-7498ebe8eb4a
+save("mytopoplot.pdf",topoplot_leadfields_difference)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -1631,10 +1686,10 @@ uuid = "c1c5ebd0-6772-5130-a774-d5fcae4a789d"
 version = "3.100.2+0"
 
 [[deps.LERC_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "aaafe88dccbd957a8d82f7d05be9b69172e0cee3"
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
+git-tree-sha1 = "bf36f528eec6634efc60d7ec062008f171071434"
 uuid = "88015f11-f218-50d7-93a8-a6af411a945d"
-version = "4.0.1+0"
+version = "3.0.0+1"
 
 [[deps.LLVMOpenMP_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -1729,10 +1784,10 @@ uuid = "4b2f31a3-9ecc-558c-b454-b3730dcb73e9"
 version = "2.40.3+0"
 
 [[deps.Libtiff_jll]]
-deps = ["Artifacts", "JLLWrappers", "JpegTurbo_jll", "LERC_jll", "Libdl", "XZ_jll", "Zlib_jll", "Zstd_jll"]
-git-tree-sha1 = "4ab7581296671007fc33f07a721631b8855f4b1d"
+deps = ["Artifacts", "JLLWrappers", "JpegTurbo_jll", "LERC_jll", "Libdl", "Pkg", "Zlib_jll", "Zstd_jll"]
+git-tree-sha1 = "3eb79b0ca5764d4799c06699573fd8f533259713"
 uuid = "89763e89-9b03-5906-acba-b20f662cd828"
-version = "4.7.1+0"
+version = "4.4.0+0"
 
 [[deps.Libuuid_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -2886,12 +2941,6 @@ git-tree-sha1 = "7d1671acbe47ac88e981868a078bd6b4e27c5191"
 uuid = "aed1982a-8fda-507f-9586-7b0439959a61"
 version = "1.1.42+0"
 
-[[deps.XZ_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "56c6604ec8b2d82cc4cfe01aa03b00426aac7e1f"
-uuid = "ffd25f8a-64ca-5728-b0f7-c24cf3aae800"
-version = "5.6.4+1"
-
 [[deps.Xorg_libX11_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Xorg_libxcb_jll", "Xorg_xtrans_jll"]
 git-tree-sha1 = "9dafcee1d24c4f024e7edc92603cedba72118283"
@@ -3006,9 +3055,9 @@ version = "1.3.7+2"
 
 [[deps.libwebp_jll]]
 deps = ["Artifacts", "Giflib_jll", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Libglvnd_jll", "Libtiff_jll", "libpng_jll"]
-git-tree-sha1 = "d2408cac540942921e7bd77272c32e58c33d8a77"
+git-tree-sha1 = "ccbb625a89ec6195856a50aa2b668a5c08712c94"
 uuid = "c5f90fcd-3b7e-5836-afba-fc50a0988cb2"
-version = "1.5.0+0"
+version = "1.4.0+0"
 
 [[deps.nghttp2_jll]]
 deps = ["Artifacts", "Libdl"]
@@ -3072,9 +3121,13 @@ version = "3.6.0+0"
 # ╠═c8375060-fb78-4343-842a-8b9ce8f4f90e
 # ╠═521f140f-2322-438a-8a6a-e459dace3196
 # ╟─615a2bb0-f1ab-4469-8d2e-eb10e077de1d
-# ╠═6ff30595-de0a-4f57-8d24-0c3c120f7f04
 # ╠═9c28c405-a62f-43ed-beba-38ebc08ceeec
 # ╠═23736080-0058-4289-a8d2-e85217d0c101
 # ╟─f2f265c0-75f0-4d6f-92b6-c21ac6420b39
+# ╠═48d86efe-d2cb-4611-8126-3ad7cfd85df1
+# ╠═8fb3fc94-f9c3-4fee-93f0-95f5f6b1bc0f
+# ╠═669a3b99-fb8e-4874-b2b7-46aa13e16a54
+# ╠═43a4fd5c-4067-4e8e-94b9-5af307981372
+# ╠═3fa794ed-b4dc-4ccd-8644-7498ebe8eb4a
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

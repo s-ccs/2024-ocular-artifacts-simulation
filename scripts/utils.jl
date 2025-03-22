@@ -137,17 +137,22 @@ function topoplot_leadfields_difference(lf1,lf2,pos2d; labels=["","","",""], com
 	return f
 end
 
+"""
+Calculate orientations from the given positions with respect to the reference. `direction` is by default "towards" the reference point; if a different value is given, orientations are calculated away from the reference point.
+"""
 function calc_orientations(reference, positions; direction="towards")
-		# calculate orientations from the given positions w.r.t. the reference
-		if direction == "towards"
-			orientation_vecs = reference .- positions
-		else
-			orientation_vecs = positions .- reference
-		end
-		return orientation_vecs ./ norm.(eachrow(orientation_vecs))
+    if direction == "towards"
+        orientation_vecs = reference .- positions
+    else
+        orientation_vecs = positions .- reference
+    end
+    return orientation_vecs ./ norm.(eachrow(orientation_vecs))
 end
 
-function angle(a,b) 
+"""
+Calculate the angle between two 3-D vectors.
+"""
+function angle_between(a,b) 
     return acosd.(dot(a, b)/(norm(a)*norm(b)))
 end
 
@@ -159,8 +164,10 @@ function gazevec_from_angle(angle_deg)
 	return [sind(angle_deg) cosd(angle_deg) 0]
 end
 
-
-function gv_angle_3d(angle_H, angle_V)
+"""
+Calculate the gaze vector given the horizontal and vertical angles from center gaze.
+"""
+function gazevec_from_angle_3d(angle_H, angle_V)
 	# angles measured from center gaze position - use complementary angle for θ 
 	return Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(90-angle_H), deg2rad(angle_V))))
 end
@@ -174,7 +181,7 @@ end
 
 
 function is_corneapoint(orientation, gazedir, max_cornea_angle_deg)
-	if(angle(orientation,gazedir)<=max_cornea_angle_deg)
+	if(angle_between(orientation,gazedir)<=max_cornea_angle_deg)
 		return 1
 	else 
 		return -1
