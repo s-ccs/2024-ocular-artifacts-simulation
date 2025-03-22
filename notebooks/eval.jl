@@ -4,21 +4,9 @@
 using Markdown
 using InteractiveUtils
 
-# This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
-macro bind(def, element)
-    #! format: off
-    quote
-        local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
-        local el = $(esc(element))
-        global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
-        el
-    end
-    #! format: on
-end
-
 # ╔═╡ 3a271e46-e43f-46e0-84bf-32192c9b8fe5
 begin
-	using WGLMakie
+	using CairoMakie
 	using MAT
 	using StableRNGs
 	using UnfoldSim
@@ -62,9 +50,10 @@ begin
 Steps:
 - import eyemodel - remove extra electrodes
 - calculate source indices for a list of labels
-- calculate orientations for sim-source points, away from the center
-- plot orientations, gaze direction
-- calculate leadfield for retina and cornea given a particular gaze position(NOTE: this assumes orientation for each eye point is already calculated away from the center of the respective eyeball. This will only calculate leadfield weighted by gaze direction. currently has the same gazedirection for both eyes)
+- ensemble: 
+	- calculate orientations for simulation source points, away from the center, and set these in the same eyemodel object
+	- calculate leadfield for retina and cornea given a particular gaze position(NOTE: this assumes orientation for each eye point is already calculated away from the center of the respective eyeball. This will only calculate leadfield weighted by gaze direction. currently has the same gazedirection for both eyes)
+	- for trajectory: repeat previous step for each gaze vector.  
 =#
 end
 
@@ -77,43 +66,40 @@ begin
 				,"Retina"
 				# ,"leftright" # all combined sources. does not split between retina & cornea.
 				,r"EyeRetina_Choroid_Sclera_left$" # match the end of the search term, or else it also matches "leftright" sources.
-				,"EyeCornea_left_"
 				,r"EyeRetina_Choroid_Sclera_right$"
-				,"EyeCornea_right_"
 				,"EyeCornea_left" # new spherical eyemodel - only one set of sources per eye and the labels are different
 				,"EyeCornea_right" # same as above
-				,"left" # for intermediate eyemodel; there are only eye points and no symmetric (leftright) sources
-				,"right" # ditto here
 				,"EyeCenter_right"
 				,"EyeCenter_left"
 			]
-	# TODO: add label search term for complete L/R eye (instead of separate retina/cornea) and one for all L&R/retina&cornea points
-	# TODO: add label to select only one set of cornea sources: horizontal or vertical oriented
+	"set the list of labels for which we will pre-find indices"
 end
 
 # ╔═╡ fa7aaded-fcd1-4049-a611-462115614910
 begin
 	# eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_hull_mesh8_2025-03-01.mat")
 	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_sphere_mesh8_2025-03-01.mat")
-	# eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_new_2025-02-10.mat")
 	remove_indices = [164, 165, 166, 167] # since eyemodel structure doesn't exactly correspond to the main hartmut mat structure expected by the read_new_hartmut function, just get the indices of the electrodes that it drops & drop the same indices from eyemodel directly 
 	eyemodel["leadfield"] = eyemodel["leadfield"][Not(remove_indices), :, :]
-	""
+	"load eyemodel and remove electrodes like in read_new_hartmut"
 end
+
+# ╔═╡ 05a80c04-af93-47f3-99db-83c0b5a6b920
+eyemodel
 
 # ╔═╡ 3756412a-0715-4ae4-9e32-f46978e60a38
 begin
 	# import small headmodel temporarily for electrode positions, since eyemodel does not include them
 	hart_small = UnfoldSim.headmodel()
 	pos3d = hart_small.electrodes["pos"]
-	""
+	electrode_pos = pos2dfrom3d(pos3d)
+	"get electrode positions from small headmodel"
 end
 
 # ╔═╡ fe8025c9-3f52-401f-bbdb-60d0dffafd2a
 begin
+	# find indices for specific source labels
 	lsi_eyemodel = hart_indices_from_labels(eyemodel,labels) 
-	# sanity check for the earlier eyemodels: retina and cornea should have similar number of points. in the full headmodel there are two sets of points for the cornea (horizontal/vertical orientations), but in the intermediate eyemodels there are just the source points so no duplication.
-	# after new eyemodel with more uniform distribution: cornea should have fewer points than retina.
 end
 
 # ╔═╡ 13c37f0e-aedb-46be-9e50-9955536041de
@@ -129,38 +115,45 @@ begin
 	eyemodel_right_idx = [ 
 		lsi_eyemodel["EyeCornea_right"] ; lsi_eyemodel[r"EyeRetina_Choroid_Sclera_right$"] 
 	]
-	em_sim_idx = [eyemodel_left_idx; eyemodel_right_idx] # indices in eyemodel, of the points which we want to use to simulate data, i.e. retina & cornea
+	sim_srcs_idx = [eyemodel_left_idx; eyemodel_right_idx] # indices in eyemodel, of the points which we want to use to simulate data, i.e. retina & cornea
 	
-	# positions of left and right Retina&Cornea points in eyemodel, and their centroid
+	# positions of left and right Retina&Cornea points in eyemodel, and their centroid (centroid is not used now in favour of eye center points provided in spherical model)
 	em_positions_L = eyemodel["pos"][eyemodel_left_idx,:]
 	em_positions_R = eyemodel["pos"][eyemodel_right_idx,:]
-	eye_center_L = Statistics.mean(em_positions_L,dims=1)
-	eye_center_R = Statistics.mean(em_positions_R,dims=1)
+	# eye_center_L = Statistics.mean(em_positions_L,dims=1)
+	# eye_center_R = Statistics.mean(em_positions_R,dims=1)
+	# mean_center_idx = [UnfoldSim.closest_src(Statistics.mean(em_positions_L,dims=1)[1,:], eyemodel["pos"]);  UnfoldSim.closest_src(Statistics.mean(em_positions_R,dims=1)[1,:], eyemodel["pos"])]
 	
-	# find center - directly using the values from ALL eyepoints (not just cornea&retina) in the model 2025-02-10 to avoid problems if future models do not include within-eye points anymore. the code for calculating these is however still available.
-	eyeall_center_L = [ -30.972  56.9449  -37.1539];
-	eyeall_center_R = [31.986  56.5737  -37.1178];
-	
-	# # finding centroid using all eye points
-	# eyeall_idx_L = lsi_eyemodel["left"]
-	# eyeall_idx_R = lsi_eyemodel["right"] 
-	# eyeall_center_L = Statistics.mean(eyemodel["pos"][eyeall_idx_L,:],dims=1) # [ -30.972  56.9449  -37.1539] from all eyepoints in model 2025-02-10, including inside-eye points (aqueous, vitreous,...)
-	# eyeall_center_R = Statistics.mean(eyemodel["pos"][eyeall_idx_R,:],dims=1) # [31.986  56.5737  -37.1178] from all eyepoints in model 2025-02-10, including inside-eye points (aqueous, vitreous,...)
+	eye_center_L = eyemodel["pos"][lsi_eyemodel["EyeCenter_left"],:]
+	eye_center_R = eyemodel["pos"][lsi_eyemodel["EyeCenter_right"],:]
 
-	"calculate left/right eye indices, eye centroids, gaze directions"
+	# Previously calculated values for centroid using all eye points (incl. aqueous/vitreous etc)
+	# eyeall_center_L = [ -30.972  56.9449  -37.1539];
+	# eyeall_center_R = [31.986  56.5737  -37.1178];
+
+	"calculate left/right eye indices, eye centre/centroids, gaze directions" 
+end
+
+# ╔═╡ 8d88ae97-f0fc-458b-a0f2-77e5a8db0436
+eye_center_L, eye_center_R
+
+# ╔═╡ e8341015-2507-483b-8d5b-d5a3d44d376d
+begin
+	# @info eyemodel_left_idx, eyemodel_right_idx
+	# sanity check: the total number of left+right ensemble sources matches the combined total count of retina and cornea.
 end
 
 # ╔═╡ a3deace1-21a2-4c5a-a68a-84e31360d986
 begin
-	# calculate orientations wrt centroid
+	# calculate orientations wrt centre
 	# calculate all orientations away from center, later use negative weightage for the points where the source dipole points towards the centroid.
 	
 	eyemodel["orientation"] = zeros(size(eyemodel["pos"]))
 	
-	eyemodel["orientation"][eyemodel_right_idx,:] = calc_orientations(eyeall_center_R, em_positions_R; direction="away")
+	eyemodel["orientation"][eyemodel_right_idx,:] = calc_orientations(eye_center_R, em_positions_R; direction="away") 
 	
-	eyemodel["orientation"][eyemodel_left_idx,:] = calc_orientations(eyeall_center_L, em_positions_L; direction="away")
-	"calculate eye source orientations wrt respective centroid"
+	eyemodel["orientation"][eyemodel_left_idx,:] = calc_orientations(eye_center_L, em_positions_L; direction="away")
+	"calculate eye source orientations away from respective centre"
 end
 
 # ╔═╡ dc315567-4d47-44dc-aea6-4eb500da2d3d
@@ -176,97 +169,19 @@ begin
 end
 
 # ╔═╡ 8d1bc9f2-52fe-48b7-8a77-3a962fb9fd18
-begin
-	gazedirection_test = [0. 1. 0.] # use Floats: angle calculation function gives errors if we use integers.
-	@info cornea_center_R, cornea_center_L
-end
-
-# ╔═╡ e038aaea-2764-4646-943c-69dffdf2b5ba
 # ╠═╡ disabled = true
 #=╠═╡
 begin
-	# plot eyemodel sources with calculated orientations; centroids; approx. gaze direction. plot average gazedirection from the model between the corneas, plot parameter 'gazedirection_test' at the origin.
-	
-	fig_eyemodel_orientations = WGLMakie.scatter([0 0 0], alpha=0.025, color="grey")
-	
-	point3fs_o = [Point3f(p...) for p in eachrow(
-		[
-			# eyemodel["pos"];
-			eye_center_R; # cornea_center_R;
-			eye_center_L; # cornea_center_L;
-			# [0 10 0];
-			# [0 75 0];
-			# equiv_dipole_pos;			
-		]
-	)]
-	vectors_o = [Vec3f(o...) for o in eachrow(
-		[
-			# eyemodel["orientation"];
-			gazedir_R;
-			gazedir_L;
-			# gv_angle_3d(0, 15)'.*10# gazedirection_test.*10;
-			# gazedir_model_avg.*10;
-			# equiv_dipole_ori.*10;
-		]
-	)]
-	arrows!(point3fs_o, vectors_o.*6, arrowsize=Vec3f(2, 2, 0.6))
-
-	# plot movement-equivalent dipoles
-	# p_o = [Point3f(p...) for p in eachrow(
-	# 	[
-	# 		equiv_dipole_pos;
-	# 	]
-	# )]
-	# v_o = [Vec3f(o...) for o in eachrow(
-	# 	[
-	# 		equiv_dipole_ori.*3;
-	# 		# hcat(equiv_dipole_ori...)'.*10 # this worked with the old thing
-	# 	]
-	# )]
-	# arrows!(p_o, v_o.*15, arrowsize=Vec3f(2, 2, 0.6); color="red")
-
-	# for report plot
-	WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Cornea"],:])
-	WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Retina"],:])
-	
-	# WGLMakie.scatter!(eyemodel["pos"][em_sim_idx,:])
-	# WGLMakie.scatter!(cornea_center_R)
-	# WGLMakie.scatter!(cornea_center_L)
-	# red points - centroid considering ALL eye sources
-	# WGLMakie.scatter!(eyeall_center_L,color="red")
-	# WGLMakie.scatter!(eyeall_center_R,color="red")
-	# # pink points - centroid using just retina&cornea sources
-	# WGLMakie.scatter!(eye_center_L,color="pink")
-	# WGLMakie.scatter!(eye_center_R,color="pink")
-
-	# # purple points - movement-equivalent dipole source locations
-	# WGLMakie.scatter!(Point3f(equiv_dipole_pos[1,:]),color="purple";markersize=25)
-	# WGLMakie.scatter!(Point3f(equiv_dipole_pos[2,:]),color="purple";markersize=25)
-
-	@info gazedir_R, gazedir_L
-	
-	# WGLMakie.scatter!(,color="red")
-	# WGLMakie.scatter!(,color="red")
-	# fig_eyemodel_orientations
+	# gazedirection_test = [0. 1. 0.] # use Floats: angle calculation function gives errors if we use integers.
+	# @info cornea_center_R, cornea_center_L
 end
   ╠═╡ =#
 
 # ╔═╡ 852bdf41-ade3-49b5-9414-76a51358f81b
+# ╠═╡ disabled = true
+#=╠═╡
 # topoplot_leadfields_difference(mag_eyemodel_retina,mag_eyemodel_cornea,pos2dfrom3d(pos3d))
-
-# ╔═╡ 8c72282b-476e-4bc2-90a3-09b2f2afa621
-begin
-	function leadfields_from_trajectory(eyemodel, em_sim_idx, gazedirections, n_chan=227)
-		lfs = zeros(n_chan,length(gazedirections))
-		for ix in 1:size(gazedirections)[2]
-			lfs[:,ix] = leadfield_from_gazedir(eyemodel, em_sim_idx, 
-			# gv_angle_3d(gazedirections[ix,1], gazedirections[ix,2]),
-			gazedirections,
-				54.0384).*10e3
-		end
-		return lfs
-	end
-end
+  ╠═╡ =#
 
 # ╔═╡ 0e27de95-91f0-4d13-b051-ee1f98090d8e
 # next cell will be useful for trajectory simulation
@@ -274,40 +189,104 @@ end
 # ╔═╡ c23077be-a053-4e8c-957c-0ea11d037b22
 begin
 	# Find leadfields for individual angles.
-	gaze_angles_horiz = collect(-90:90)# [120 121]
-	leadfields = zeros(227,length(gaze_angles_horiz))
-	gd_horiz = hcat(gaze_angles_horiz[:], zeros(length(gaze_angles_horiz)))
-	gd_angle_horiz = hcat(gv_angle_3d.(gd_horiz[:,1],gd_horiz[:,2]))
-	gd_vert = hcat(zeros(length(gaze_angles_horiz)), gaze_angles_horiz[:])
-	gd_angle_vert = hcat(gv_angle_3d.(gd_vert[:,1],gd_vert[:,2])).*10e8
 	
-	@info gaze_angles_horiz[1]
-	lf_center = leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(0), 54.0384).*10e3
-	for ix in 1:length(gaze_angles_horiz)
-		leadfields[:,ix] = leadfield_from_gazedir(eyemodel, em_sim_idx,
-			gd_angle_horiz[ix]
-			# gazevec_from_angle(gaze_angles_horiz[ix]) #sent to J&B
-			, 54.0384).*10e3
+	gaze_angles_pure = collect(-40:40) # set of angle values for pure saccades
+
+	# create 3d angle values for the pure saccades (set azimuth and elevation)
+	gd_horiz = hcat(gaze_angles_pure[:], zeros(length(gaze_angles_pure))) 
+	gd_vert = hcat(zeros(length(gaze_angles_pure)), gaze_angles_pure[:])
+
+	# create gaze direction vectors from 3d angles and hcat to create a matrix (gv_angle_3d.() outputs a vector of vectors)
+	# vector of 1x3 vectors, length = n_gazepoints 
+	gazevectors_horiz = hcat(gv_angle_3d.(gd_horiz[:,1],gd_horiz[:,2]))
+	gazevectors_vert = hcat(gv_angle_3d.(gd_vert[:,1],gd_vert[:,2]))
+end
+
+# ╔═╡ b26f09f3-042e-4923-94cc-fb4e4f46cb4a
+begin
+	gazevectors = gazevectors_vert # gazevectors_horiz # 
+	sacc_direction = "vert" # "horiz" # 
+	" @NOTE setting trajectory (selecting the pure-saccade direction -> gazevectors) - please also change 'direction' so that the plot labels change accordingly."
+end
+
+# ╔═╡ 4670be07-e9b5-4933-b316-9ece432d8f9d
+begin
+	# simulate for gazevectors - ensemble method
+
+	# leadfield for centre, to subtract for B-A method
+	lf_center = leadfield_from_gazedir(eyemodel, sim_srcs_idx, gazevec_from_angle(0), 54.0384).*10e3
+
+	# leadfields: matrix of dimensions (electrodes x n_gazepoints) 
+	leadfields = zeros(227,length(gaze_angles_pure))
+	for ix in 1:length(gazevectors) 
+		# for each gazepoint, calculate the leadfield and store it in the corresponding column
+		leadfields[:,ix] = leadfield_from_gazedir(eyemodel, sim_srcs_idx,
+			gazevectors[ix], 54.0384).*10e3
+	end
+
+	# calculate difference from centre gaze
+	lf_ensemble_diff = zeros(size(leadfields))
+	for ix in 1:length(gaze_angles_pure)
+		lf_ensemble_diff[:,ix] = leadfields[:,ix] - lf_center
+	end
+	
+	"@NOTE calculating ensemble leadfields"
+end
+
+# ╔═╡ 5db66bd1-46e5-4b14-9159-b158bf3faae2
+
+	@info vcat(gazevectors[1,:], gazevectors[1,:]), [gazevec_from_angle(0)[:],gazevec_from_angle(0)[:]]
+
+# ╔═╡ 05e14fab-8c76-4aba-ab26-d5d5c21ad88b
+begin
+	function leadfield_specific_sources_orientations(model,idx,equiv_orientations)
+	# take just a selected subset of points in the model, along with a new orientation for those points, and calculate the sum of leadfields of just these points with the given orientation. 
+		equiv_ori_model = model["orientation"]
+		
+		for ii in idx
+			equiv_ori_model[ii,:] = equiv_orientations[:]
+		end
+		
+		mag_eyemodel_equiv = magnitude(eyemodel["leadfield"],equiv_ori_model)
+		mag = sum(mag_eyemodel_equiv[:,ii] for ii in idx)
+		return mag
 	end
 end
 
-# ╔═╡ a2ad31ef-720b-4345-bcd2-39c4cff8a2bb
+# ╔═╡ 2470dcc5-3c43-4308-95e8-cc3ec8e81cb8
+# sanity check that the CRD simulation reproduces the plots we had before 
+topoplot_leadfields_difference(
+		lf_crd_centregaze, leadfields_crd[:,41-15],
+		pos2dfrom3d(pos3d); labels = ["Ensemble - position A", "Ensemble - position B", "Ensemble, 15°","Difference plotted with electrodes"], commoncolorrange=false)
+
+# ╔═╡ 778d75cc-dce9-45a2-8282-22a4850a8dd0
 begin
-	# sanity check for converting the LF calculation to a function leadfields_from_trajectory
-	# gd_horiz = hcat(gaze_angles_horiz[:], zeros(length(gaze_angles_horiz)))
-	# gd_angle_horiz = hcat(gv_angle_3d.(gd_horiz[:,1],gd_horiz[:,2]))
-	@info length(gd_angle_horiz), size(gazevec_from_angle(gaze_angles_horiz[1]))
-	gaze_angles_horiz
-	# gd_vert = hcat(zeros(length(gaze_angles_horiz)), gaze_angles_horiz[:])
-	# gd_angle_vert = hcat(gv_angle_3d.(gd_vert[:,1],gd_vert[:,2]))
-	# lf_horiz = leadfields_from_trajectory(eyemodel, em_sim_idx, gd_angle_horiz)
-	# lf_vert =  leadfields_from_trajectory(eyemodel, em_sim_idx, gd_vert)
-	# diff_methods = leadfields-lf_horiz
-	# maximum(diff_methods), minimum(diff_methods)
+	# Calculating leadfields via crd placed in the front of eye (cornea centre).
+	leadfields_crd_cornea = zeros(227,length(gaze_angles_pure))
+	cornea_center_idx = [UnfoldSim.closest_src(cornea_center_L[1,:], eyemodel["pos"]);  UnfoldSim.closest_src(cornea_center_R[1,:], eyemodel["pos"])]
+	for ix in 1:length(gaze_angles_pure)
+		# leadfields_crd_cornea[:,ix] = (
+		# 	leadfield_specific_sources_orientations(deepcopy(eyemodel),cornea_center_idx[1],gazevectors[ix]) + leadfield_specific_sources_orientations(deepcopy(eyemodel),cornea_center_idx[2],gazevectors[ix])).*10e3
+		leadfields_crd_cornea[:,ix] = (
+			leadfield_specific_sources_orientations(deepcopy(eyemodel),cornea_center_idx,gazevectors[ix]) 
+			# + leadfield_specific_sources_orientations(deepcopy(eyemodel),cornea_center_idx[2],gazevectors[ix])
+			).*10e3
+	end
+	"calculate lf for CRDs placed at eye front"
 end
+
+# ╔═╡ c9bc39ab-63ba-4a01-98fe-8ad2ef6e20af
+# ╠═╡ disabled = true
+#=╠═╡
+begin
+	# @info gd_horiz
+	# gd_angle_horiz
+end
+  ╠═╡ =#
 
 # ╔═╡ 27565b1b-50da-49b2-8dba-9cf7d68845f2
 begin
+	@info "@NOTE: defining electrodes of interest"
 	electrode_indices = [7,8, 147, 150, 159, 48, 164]
 		# [7,8, 120, 121, 157, 158, 159, 151, 154, 147, 150] # [collect(120:121)..., collect(157:159)...]
 	# set_theme!(figure_padding = (10,100,10,10))
@@ -323,70 +302,155 @@ end
 	
 # end
 
+# ╔═╡ fbe40b32-0a3f-4a0a-8af5-ac094ae9c189
+
+
+# ╔═╡ 4b327df0-64c5-42d8-b4a0-569e187e54ce
+# SP CRD eyecenter seems to be missing FFT10h - it is very similar to FFT9h (index 147,150 respectively)
+	@info mean(leadfields_crd[147,:] - leadfields_crd[150,:])
+
+# ╔═╡ 81c41784-7471-406c-a48f-d7d3c2515a43
+# begin
+# 	f_combined = Figure()
+# 	# ax_combined = 
+# 	plot_potentials_lf_fig(
+# 		leadfields, gaze_angles_pure, "S.P. ensemble \nAngles " * string(minimum(gaze_angles_pure), " to ", maximum(gaze_angles_pure)) * sacc_direction,
+# 		f_combined[1,1]
+# 	)
+# 	plot_potentials_lf_fig(
+# 		lf_ensemble_diff, gaze_angles_pure, "Diff B-A ensemble \nAngles " * string(minimum(gaze_angles_pure), " to ", maximum(gaze_angles_pure)) * sacc_direction,
+# 		f_combined[2,1]
+# 	)
+# 	plot_potentials_lf_fig(
+# 		leadfields_crd, gaze_angles_pure, "S.P. CRD at eye centers\nAngles " * string(minimum(gaze_angles_pure), " to ", maximum(gaze_angles_pure)) * sacc_direction,
+# 		f_combined[1,2]
+# 	)
+# 	plot_potentials_lf_fig(
+# 		lf_crd_diff, gaze_angles_pure, "Diff B-A CRD \nAngles " * string(minimum(gaze_angles_pure), " to ", maximum(gaze_angles_pure)) * sacc_direction,
+# 		f_combined[2,2]
+# 	)
+# 	f_combined
+# end
+
+# ╔═╡ d45c0ccf-9b26-4b6f-945d-3947eb9bc2f2
+begin
+	
+	# @info "@NOTE: plotting s.p. with CRDs at the front"
+	# fig_sp_crd_corneacenter, ax_sp_crd_corneacenter, sp_crd_corneacenter = series(gaze_angles_pure,leadfields_crd_cornea[electrode_indices,:];labels=hart_small.electrodes["label"][electrode_indices], color=:Set1)
+	# ax_sp_crd_corneacenter.xlabel = "Gaze Angle"
+	# ax_sp_crd_corneacenter.ylabel = "Potential"
+	# ax_sp_crd_corneacenter.title = "S.P. CRD at the front of eye\nAngles " * string(minimum(gaze_angles_pure), " to ", maximum(gaze_angles_pure)) * sacc_direction
+	# axislegend(ax_sp_crd_corneacenter;
+	# position=(1.29,0.5)
+	# )
+	# fig_sp_crd_corneacenter
+end
+
+# ╔═╡ 0623c29f-2612-4ee9-8420-2786d9f9dbbb
+begin
+	function plot_toposeries_lf(lf)
+		dat, positions = lf, electrode_pos
+		df = UnfoldMakie.eeg_array_to_dataframe(dat[:, :], string.(1:length(positions)))
+		bin_width = 5
+		f = plot_topoplotseries(
+	    df;
+	    bin_num=15,
+		nrows=5,
+	    positions = positions,
+	    axis = (; xlabel = "Time windows [s]")
+		)
+	end
+end
+
+# ╔═╡ d9add875-4e6a-4e56-bd51-1711cefac056
+# topoplot_series ensemble
+plot_toposeries_lf(leadfields)
+
+# ╔═╡ 35263c3c-771f-49d5-b49f-847928ad4270
+# topoplot_series crd
+plot_toposeries_lf(leadfields_crd)
+
+# ╔═╡ 0d88dd13-9c5f-4561-a651-e2143fa1c7c9
+begin
+	function plot_potentials_lf(lf, xvals, title)
+		fig_sp, ax_sp = series(xvals,lf[electrode_indices,:];labels=hart_small.electrodes["label"][electrode_indices], color=:Set1)
+		ax_sp.title = title # "Standing potential for each angle. \nAngles " * string(minimum(xvals), " to ", maximum(xvals)) * sacc_direction
+		axislegend(ax_sp;
+		position=(1.29,0.5)
+		)
+		fig_sp
+	end
+end
+
 # ╔═╡ 7ad659bf-e772-4310-96d9-a2f380d244cc
 begin
-	# function plot_standingpotentials(fig_lineplots2=Figure)
-		fig_lineplots2, ax2, sp = series(gaze_angles_horiz,leadfields[electrode_indices,:];labels=hart_small.electrodes["label"][electrode_indices], color=:Set1)
-		# ax2 = Axis(fig_lineplots2)
-		# series!(ax2, gaze_angles_horiz,leadfields[electrode_indices,:];labels=hart_small.electrodes["label"][electrode_indices], color=:Set1)
-		ax2.title = "Standing potential for each angle. Angles " * string(minimum(gaze_angles_horiz), " to ", maximum(gaze_angles_horiz)) * " Horiz"
-		# aa= fig_lineplots2[1,2]
-		axislegend(ax2;
+	# function plot_standingpotentials_lf(fig_lineplots2=Figure)
+
+	
+
+	# 	fig_lineplots2, ax2, sp = series(gaze_angles_pure,leadfields[electrode_indices,:];labels=hart_small.electrodes["label"][electrode_indices], color=:Set1)
+	# 	# ax2 = Axis(fig_lineplots2)
+	# 	# series!(ax2, gaze_angles_horiz,leadfields[electrode_indices,:];labels=hart_small.electrodes["label"][electrode_indices], color=:Set1)
+	# 	ax2.title = "Standing potential for each angle. Angles " * string(minimum(gaze_angles_pure), " to ", maximum(gaze_angles_pure)) * sacc_direction
+	# 	axislegend(ax2;
+	# 	position=(1.29,0.5)
+	# 	)
+	# 	fig_lineplots2
+	# # end
+
+	@info "@NOTE: plotting s.p. ensemble"
+	plot_potentials_lf(
+		leadfields, gaze_angles_pure, "S.P. ensemble \nAngles " * string(minimum(gaze_angles_pure), " to ", maximum(gaze_angles_pure)) * sacc_direction
+	)
+end
+
+# ╔═╡ b518df86-2360-4879-b4c3-659965096e46
+begin
+	# fig_sp_crd, ax_sp_crd, sp_crd = series(gaze_angles_pure,leadfields_crd[electrode_indices,:];labels=hart_small.electrodes["label"][electrode_indices], color=:Set1)
+	# ax_sp_crd.xlabel = "Gaze Angle"
+	# ax_sp_crd.ylabel = "Potential"
+	# ax_sp_crd.title = "S.P. CRD at eye centers\nAngles " * string(minimum(gaze_angles_pure), " to ", maximum(gaze_angles_pure)) * sacc_direction
+	# axislegend(ax_sp_crd;
+	# position=(1.29,0.5)
+	# )
+	# fig_sp_crd
+	@info "@NOTE: plotting for CRD at eyecenters"
+	plot_potentials_lf(
+		leadfields_crd, gaze_angles_pure, "S.P. CRD at eye centers\nAngles " * string(minimum(gaze_angles_pure), " to ", maximum(gaze_angles_pure)) * sacc_direction
+	)
+end
+
+# ╔═╡ 6e1951fe-79fa-4c0f-8cbd-8833cace416a
+begin
+	@info "@NOTE: plotting diff ensemble"
+	plot_potentials_lf(
+		lf_ensemble_diff, gaze_angles_pure, "Diff B-A CRD. \nAngles " * string(minimum(gaze_angles_pure), " to ", maximum(gaze_angles_pure)) * sacc_direction
+	)
+end
+
+# ╔═╡ 52fe3ffc-5913-42c2-b264-13913836d6f0
+begin
+	@info "@NOTE: plotting diff CRD"
+	plot_potentials_lf(
+		lf_crd_diff, gaze_angles_pure, "Diff B-A CRD. \nAngles " * string(minimum(gaze_angles_pure), " to ", maximum(gaze_angles_pure)) * sacc_direction
+	)
+end
+
+# ╔═╡ 08a6e1e4-46b0-4871-858d-1f8051e3328f
+begin
+	# plot into a figure passed in from outside, to get combination plots 
+	function plot_potentials_lf_fig(lf, xvals, title, fig_sp)
+		fig_sp, ax_sp = series(xvals,lf[electrode_indices,:];labels=hart_small.electrodes["label"][electrode_indices], color=:Set1)
+		ax_sp.title = title
+		axislegend(ax_sp;
 		position=(1.29,0.5)
-		# position=(1.6,0.5)
-		) # padding=(10,30,10,10)
-		fig_lineplots2
-	# end
-end
-
-# ╔═╡ fd7c2c67-4c87-491b-a46b-3f78f4913979
-begin
-	d = zeros(size(leadfields))
-	for ix in 1:length(gaze_angles_horiz)
-		d[:,ix] = leadfields[:,ix] - lf_center
+		)
+		fig_sp
 	end
-	# d = d'
-	
 end
 
-# ╔═╡ 648a601c-892d-41f6-8bfe-c2a5f90d5f27
-begin
-	# function plot_bminusa(fig_lineplots3=Figure)
-		fig_lineplots3, ax3, sp3 = series(gaze_angles_horiz,d[electrode_indices,:];labels=hart_small.electrodes["label"][electrode_indices], color=:Set1)
-		# ax3 = Axis(fig_lineplots3)
-		# series!(ax3, gaze_angles_horiz,d[electrode_indices,:];labels=hart_small.electrodes["label"][electrode_indices], color=:Set1)
-		ax3.title = "Standing potential at current angle minus s.p. of centre gaze. \nAngles " * string(minimum(gaze_angles_horiz), " to ", maximum(gaze_angles_horiz)) * " Horiz"
-		axislegend(ax3; position=(1.29,0.5))
-		fig_lineplots3
-	# end
-end
-
-# ╔═╡ 5738a25c-e8ed-4ce5-a496-5d56a90bcaa8
-begin
-	# difference wrt CPz (index 48)
-	# d1 = zeros(size(leadfields))
-	# for ix in 1:227
-	# 	d1[ix,:] = leadfields[ix,:] - leadfields[48,:]
-	# end
-	
-	# fig_lineplots4, ax4, sp4 = series(gaze_angles_horiz,d1[electrode_indices,:];labels=hart_small.electrodes["label"][electrode_indices], color=:Set1)
-	
-	# eog = hcat( d1[7,:].-d1[164,:] , d1[8,:].-d1[164,:], d1[159,:].-d1[164,:] )
-	# # series!(gaze_angles_horiz,heog;labels=["AF7-Nz"], color=:Set1)
-	# # series!(gaze_angles_horiz,eog';) #labels=["AF7-Nz","AF8-Nz"]
-	# ax4.title = "Standing potential - difference with CPz. - at resp. angle. \nAngles " * string(minimum(gaze_angles_horiz), " to ", maximum(gaze_angles_horiz)) * " Horiz"
-	# axislegend(ax4; position=(1.29,0.5))
-	# fig_lineplots4
-	
-end
-
-# ╔═╡ b926a23d-27ef-4e96-b96f-0b885606231f
-begin
-	# HEOG: AF7/8 - Nz
-	# heog = d1[7,:].-d1[164,:]
-	# d1
-	# eog
-end
+# ╔═╡ 93c2e63c-b133-4634-9994-1ee333ba2078
+# lf_crd_diff[:,88:92]
 
 # ╔═╡ 457c3997-c641-48d9-9dc0-2034ac668fad
 begin
@@ -408,43 +472,25 @@ begin
 	@info "plotting potential difference from one sample (angle) to the next: just haphazardly went up and down, does not seem to be a good direction to go" 
 end
 
-# ╔═╡ 256c6f9f-a1d1-4ff3-a490-435b1dac7264
-# heatmap(d1')
-
-# ╔═╡ ff5d1145-927b-4287-ab00-b114ca8bffa8
-# figg = plot_erp(gaze_angles_horiz.-gaze_angles_horiz[1], d1'[:,electrode_indices])
-
-# ╔═╡ 9bfe8328-3cfe-403e-825f-4a585f2aa2d0
-begin
-	# ff = Figure()
-	# plot_channelimage(d1[1:49,:], positions[1:49], hart_small.electrodes["label"][1:49])
-end
-
-# ╔═╡ d9add875-4e6a-4e56-bd51-1711cefac056
-
-
-# ╔═╡ 35263c3c-771f-49d5-b49f-847928ad4270
-# d1
-
 # ╔═╡ 24cb806a-8e79-44c7-8680-46a0a59254b0
 begin
 	maximums = maximum(leadfields, dims=1)
 	minimums = minimum(leadfields, dims=1)
-	fig_maxmin, ax_maxmin = lines(gaze_angles_horiz, maximums[1,:]; label=["max"])
-	lines!(gaze_angles_horiz, minimums[1,:]; label=["min"])
-	ax_maxmin.title = "Limits of standing potential measured for the gaze direction. \nAngles " * string(minimum(gaze_angles_horiz), " to ", maximum(gaze_angles_horiz)) * " Horiz" 
+	fig_maxmin, ax_maxmin = lines(gaze_angles_pure, maximums[1,:]; label=["max"])
+	lines!(gaze_angles_pure, minimums[1,:]; label=["min"])
+	ax_maxmin.title = "Limits of ensemble s.p. measured for the gaze direction. \nAngles " * string(minimum(gaze_angles_pure), " to ", maximum(gaze_angles_pure)) * sacc_direction 
 	axislegend(ax_maxmin, position=:rc)
 	fig_maxmin
 end
 
 # ╔═╡ 2a594d41-f09d-49d7-8729-69394391f7bd
 begin
-	
-	# WGLMakie.save("/home/marathe/Documents/2024-ocular-artifacts-simulation/minus-plot.png",fig_lineplots3)
-	# WGLMakie.save("minus-plot.png",fig_lineplots3)
+	save("f_save.svg",f_save)
 end
 
 # ╔═╡ 2d7c5dc3-2a5b-41b5-a63b-eb24811e33c4
+# ╠═╡ disabled = true
+#=╠═╡
 begin
 	# f_combined = Figure()
 	# a = Axis(f_combined[1,:])
@@ -454,6 +500,7 @@ begin
 	# f_combined
 	
 end
+  ╠═╡ =#
 
 # ╔═╡ 4251c8ee-16ac-40c5-821e-acb90e9d7b75
 begin
@@ -461,74 +508,317 @@ begin
 	set_theme!(figure_padding = (10,100,10,10))
 end
 
-# ╔═╡ 01eec740-d9fd-400c-8384-d18cc2a47228
+# ╔═╡ 448dccc9-97c0-4d6a-a05c-74aa734f3166
+# ╠═╡ disabled = true
+#=╠═╡
 begin
-	@bind idx_plot NumberField(1:length(gaze_angles_horiz))
+	# plot_topoplot(lf[:,idx_plot].*10e3
+	# , positions=pos2dfrom3d(hart_small.electrodes["pos"]), 
+	# 	layout=(; use_colorbar=true), 
+	# 	visual = (; enlarge = 0.65, 
+	# 	# label_scatter = false,
+	# 	# colorrange=(min,max)
+	# 	)
+	# )
+	# ceil(Integer,length(gaze_angles_horiz)/2)-5
 end
+  ╠═╡ =#
+
+# ╔═╡ 01eec740-d9fd-400c-8384-d18cc2a47228
+# ╠═╡ disabled = true
+#=╠═╡
+begin
+	@bind idx_plot NumberField(1:length(gaze_angles_pure))
+end
+  ╠═╡ =#
 
 # ╔═╡ fd0aada2-d83d-423b-b849-df397c10bde2
-@info gaze_angles_horiz[idx_plot]
+# ╠═╡ disabled = true
+#=╠═╡
+@info gaze_angles_pure[idx_plot]
+  ╠═╡ =#
 
-# ╔═╡ 24767682-e72a-4fa1-86bd-ae225fd1bca2
+# ╔═╡ 80b16351-071e-4e6b-9ca2-1f5c872a3e03
 begin
-	leadfields_crd = zeros(227,length(gaze_angles_horiz))
-	equiv_dipole_idx = [lsi_eyemodel["EyeCenter_right"]...,lsi_eyemodel["EyeCenter_left"]...]
-	for ix in 1:length(gaze_angles_horiz)
-		leadfields_crd[:,ix] = (equiv_dipole_mag(deepcopy(eyemodel),equiv_dipole_idx[1],gd_angle_horiz[ix]) + equiv_dipole_mag(deepcopy(eyemodel),equiv_dipole_idx[2],gd_angle_horiz[ix])).*10e3
-			# leadfield_from_gazedir(eyemodel, [lsi_eyemodel["EyeCenter_right"]...,lsi_eyemodel["EyeCenter_left"]...],
-			# gd_angle_vert[ix]
-			# gazevec_from_angle(gaze_angles_horiz[ix]) #sent to J&B
-			# , 54.0384).*10e3
+	# @info eyecenter_idx
+	# new_crd_lf = lf_for_trajectory(deepcopy(eyemodel), ; sim_idx=eyecenter_idx) #.*10e3
+end
+
+# ╔═╡ 80743fae-e2b9-40b0-a3c8-94681c273b22
+begin
+	""" 
+	Simulate the resultant leadfield for the given trajectory (one or more gaze vectors), as the sum of leadfields from all sources at `sim_idx` in `model`. Returns a Matrix of size channels x traj_pos.  
+	"""
+	function lf_for_trajectory(model, gaze_vectors; sim_idx = collect(1:size(model["leadfield"])[2]), max_cornea_angle_deg = 54.0384, weights = zeros(size(model["leadfield"])[2]))
+
+	@info sim_idx
+	
+		# calculate magnitude of the model using the given orientations 
+		mag_model = magnitude(model["leadfield"],model["orientation"])
+		
+		# by default, all sources other than those defined by sim_idx will be set to zero magnitude 
+		# old: # source_weights = zeros(size(model["pos"])[1]) 
+		
+		lf = zeros(size(eyemodel["leadfield"])[1],size(gaze_vectors)[1]);
+		@info size(gaze_vectors[sim_idx]), "weights"
+		@info sim_idx, size(gaze_vectors)
+		for ix in 1:size(gaze_vectors)[1] # each electrode
+			# weights[sim_idx] .= mapslices(x -> is_corneapoint(x,gaze_vectors[ix,:],max_cornea_angle_deg), model["orientation"][sim_idx,:],dims=2);
+			
+			# lf[:,ix] = sum(mag_model[:,idx].* weights[idx] for idx in sim_idx,dims=2)
+				
+			# 	# leadfield_from_gazedir(eyemodel, em_sim_idx,
+			# 	# 				gd_angle_horiz[ix]
+			# 	# 				, 54.0384).*10e3
+			lf[:,ix] = leadfield_from_gazedir(eyemodel, sim_idx, 
+			gaze_vectors,
+				max_cornea_angle_deg)
+		end
+		return lf
+	end
+	# lf_for_trajectory(deepcopy(eyemodel), gd_angle_vert; sim_idx=[1,2,3,4]).*10e3
+end
+
+# ╔═╡ 8c72282b-476e-4bc2-90a3-09b2f2afa621
+begin
+	function leadfields_from_trajectory(eyemodel, sim_idx, gazedirections, n_chan=227; max_cornea_angle_deg = 54.0384)
+		lfs = zeros(n_chan,length(gazedirections))
+		for ix in 1:size(gazedirections)[2]
+			lfs[:,ix] = leadfield_from_gazedir(eyemodel, sim_idx, 
+			# gv_angle_3d(gazedirections[ix,1], gazedirections[ix,2]),
+			gazedirections,
+				max_cornea_angle_deg).*10e3
+		end
+		return lfs
 	end
 end
 
-# ╔═╡ b518df86-2360-4879-b4c3-659965096e46
+# ╔═╡ 28f897bc-1c6d-4c10-888b-c83060c3389b
 begin
-	fig_sp_crd, ax_sp_crd, sp_crd = series(gaze_angles_horiz,leadfields_crd[electrode_indices,:];labels=hart_small.electrodes["label"][electrode_indices], color=:Set1)
+	# Steps to simulate trajectory:
+	# - import/load eyemodel
+	# - find eye point indices
+	# - calculate orientations of eye points away from center
+	# - calculate gaze direction vectors
+	# - simulate leadfields for each gazedir vector
+end
+
+# ╔═╡ e74d6606-7329-46b9-97d0-2f038b76b28b
+# ╠═╡ disabled = true
+#=╠═╡
+begin
+ 	# plot eyemodel sources with calculated orientations; centroids; approx. gaze direction. plot average gazedirection from the model between the corneas, plot parameter 'gazedirection_test' at the origin.
+ 	
+ 	fig_eyemodel_orientations = WGLMakie.scatter([0 0 0], alpha=0.025, color="grey")
+ 	
+ 	point3fs_o = [Point3f(p...) for p in eachrow(
+ 		[
+ 			# eyemodel["pos"];
+ 			eye_center_R; # cornea_center_R;
+ 			eye_center_L; # cornea_center_L;
+ 			# [0 10 0];
+ 			# [0 75 0];
+ 			# equiv_dipole_pos;			
+ 		]
+ 	)]
+ 	vectors_o = [Vec3f(o...) for o in eachrow(
+ 		[
+ 			# eyemodel["orientation"];
+ 			gazedir_R;
+ 			gazedir_L;
+ 			# gv_angle_3d(0, 15)'.*10# gazedirection_test.*10;
+ 			# gazedir_model_avg.*10;
+ 			# equiv_dipole_ori.*10;
+ 		]
+ 	)]
+ 	arrows!(point3fs_o, vectors_o.*6, arrowsize=Vec3f(2, 2, 0.6))
+ 
+ 	# plot movement-equivalent dipoles
+ 	# p_o = [Point3f(p...) for p in eachrow(
+ 	# 	[
+ 	# 		equiv_dipole_pos;
+ 	# 	]
+ 	# )]
+ 	# v_o = [Vec3f(o...) for o in eachrow(
+ 	# 	[
+ 	# 		equiv_dipole_ori.*3;
+ 	# 		# hcat(equiv_dipole_ori...)'.*10 # this worked with the old thing
+ 	# 	]
+ 	# )]
+ 	# arrows!(p_o, v_o.*15, arrowsize=Vec3f(2, 2, 0.6); color="red")
+ 
+ 	# for report plot
+ 	WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Cornea"],:], alpha=0.2)
+ 	WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Retina"],:], alpha=0.2)
+ 	
+ 	# WGLMakie.scatter!(eyemodel["pos"][em_sim_idx,:])
+ 	# WGLMakie.scatter!(cornea_center_R)
+ 	# WGLMakie.scatter!(cornea_center_L)
+ 	# red points - centroid considering ALL eye sources
+ 	# WGLMakie.scatter!(eyeall_center_L,color="red")
+ 	# WGLMakie.scatter!(eyeall_center_R,color="red")
+ 	# # pink points - centroid using just retina&cornea sources
+ 	# WGLMakie.scatter!(eye_center_L,color="pink")
+ 	# WGLMakie.scatter!(eye_center_R,color="pink")
+ 
+ 	# # purple points - movement-equivalent dipole source locations
+ 	# WGLMakie.scatter!(Point3f(equiv_dipole_pos[1,:]),color="purple";markersize=25)
+ 	# WGLMakie.scatter!(Point3f(equiv_dipole_pos[2,:]),color="purple";markersize=25)
+ 
+ 	@info gazedir_R, gazedir_L
+ 	
+ 	# WGLMakie.scatter!(,color="red")
+ 	# WGLMakie.scatter!(,color="red")
+ 	fig_eyemodel_orientations
+ end
+  ╠═╡ =#
+
+# ╔═╡ 4d0f697c-a8f4-4d23-b733-ea6eeac09c48
+@info sim_srcs_idx, eyecenter_idx
+
+# ╔═╡ d2c528e9-53f0-4e8c-9d66-74a86b0dedd6
+# ╠═╡ disabled = true
+#=╠═╡
+# @info eyecenter_idx[1],gazevectors[1]
+leadfield_specific_sources_orientations(deepcopy(eyemodel),eyecenter_idx[1],gazevectors[1])
+  ╠═╡ =#
+
+# ╔═╡ d4c9f9a1-d258-4a38-96d7-bf497f3a5386
+begin
+	# @info size(lf), @info size(leadfields_crd)
+	# leadfields_crd
+end
+
+# ╔═╡ bc7b6665-2f5d-46f6-b82f-a60463f184be
+# leadfields_crd_cornea./lf
+
+# ╔═╡ 43846600-5b96-473b-af41-da3f8710fab4
+# ╠═╡ disabled = true
+#=╠═╡
+begin
+	v = src_orientations[1,:]
+	@info v[1]
+	# @info src_orientations[1,1:n_srcs,:]
+	@info n_srcs
+end
+  ╠═╡ =#
+
+# ╔═╡ 598856e9-b53f-4e84-9247-a8a8af51a664
+# ╠═╡ disabled = true
+#=╠═╡
+begin
+	model_orientations1 = zeros(size(model["orientation"]))
+	println(model_orientations1[src_idx,:])
+	# @
+	for j = 1:n_srcs
+		@info src_orientations[:,j]
+		# @info src_orientations[1,:][j,:]
+		# model_orientations1[src_idx[j],:] .= src_orientations[:,j]
+	end
+	# src_orientations[1][1:n_srcs,:]
+	# mag = magnitude(eyemodel["leadfield"],model_orientations)
+end
+  ╠═╡ =#
+
+# ╔═╡ d9121839-9e49-4636-9938-787a193fb42d
+# ╠═╡ disabled = true
+#=╠═╡
+# model_orientations1[src_idx,:]
+src_orientations
+# model_orientations1
+  ╠═╡ =#
+
+# ╔═╡ e4ba918c-c5fd-4bb8-95c8-a638f7b9080a
+# ╠═╡ disabled = true
+#=╠═╡
+begin
+	"""
+	Simulate the leadfield resulting from a set of sources and a trajectory described by a set of orientations for each point in the trajectory.
+	"""
+	function leadfield_from_dipoles_trajectory(model, src_idx, src_orientations)
+		n_channels = size(model["leadfield"])[1]
+		n_srcs = size(src_idx)[1]
+		n_simpoints = size(src_orientations)[1]
+		model_orientations = similar(model["orientation"])
+		lf = zeros(n_channels,n_simpoints)
+		@info n_srcs, src_orientations[1], src_orientations[1][:]
+		for simpoint_idx in 1:n_simpoints
+			for src_i in 1:n_srcs
+				model_orientations[src_i,:] = src_orientations[src_i][:]
+			end
+			mag = magnitude(eyemodel["leadfield"],model_orientations)
+			lf[:,simpoint_idx] = sum(mag[:,ii] for ii in src_idx)
+		end
+		return lf
+	end
+	eyecenter_idx = [Statistics.mean(em_positions_L,dims=1), Statistics.mean(em_positions_R,dims=1)]  # [lsi_eyemodel["EyeCenter_right"]...,lsi_eyemodel["EyeCenter_left"]...]
+	crd_orientations_trajectory = gd_angle_horiz # hcat(gd_angle_horiz, gd_angle_horiz)
+	@info crd_orientations_trajectory
+	leadfield_from_dipoles_trajectory(deepcopy(eyemodel),eyecenter_idx,crd_orientations_trajectory)
+	# src_idx = eyecenter_idx
+	# model = deepcopy(eyemodel)
+	# src_orientations = crd_orientations_trajectory
+	# n_channels = size(model["leadfield"])[1]
+	# n_srcs = size(src_idx)[1]
+	# n_simpoints = size(src_orientations)[1]
+	# model_orientations = zeros(size(model["orientation"]))
+	# @info model_orientations
+	# lf = zeros(n_channels,n_simpoints)
+	# # @info n_channels, n_simpoints, n_srcs, lf, 
+	# @info typeof(model_orientations[src_idx,:])
+	# @info typeof(src_orientations[1:n_srcs,:])
+	# src_orientations[2][1:n_srcs,:]
+	# for simpoint_idx in 1:n_simpoints
+	# 	model_orientations[src_idx,:] .= src_orientations[simpoint_idx][1:n_srcs,:]
+	# 	mag = magnitude(eyemodel["leadfield"],model_orientations)
+	# 	lf[:,simpoint_idx] = sum(mag[:,ii] for ii in src_idx)
+	# end
+	# @info size(lf), @info size(leadfields_crd)
+end
+  ╠═╡ =#
+
+# ╔═╡ 24767682-e72a-4fa1-86bd-ae225fd1bca2
+begin
+	# @NOTE: Calculating leadfields via crd placed at centre of eye.
+	@info "crd at center of eye"
+	leadfields_crd = zeros(227,length(gaze_angles_pure))
+	eyecenter_idx = [lsi_eyemodel["EyeCenter_left"][1],lsi_eyemodel["EyeCenter_right"][1]]
 	
-	ax_sp_crd.title = "Standing potential for each angle. Angles " * string(minimum(gaze_angles_horiz), " to ", maximum(gaze_angles_horiz)) * " vert"
-	# aa= fig_lineplots2[1,2]
-	axislegend(ax_sp_crd;
-	position=(1.29,0.5)
-	# position=(1.6,0.5)
-	) # padding=(10,30,10,10)
-	fig_sp_crd
-end
-
-# ╔═╡ 0623c29f-2612-4ee9-8420-2786d9f9dbbb
-begin
-	dat, positions = leadfields_crd, pos2dfrom3d(pos3d) # TopoPlots.example_data()
-	df = UnfoldMakie.eeg_array_to_dataframe(dat[:, :], string.(1:length(positions)))
-	bin_width = 5
-	f = plot_topoplotseries(
-    df;
-    bin_num=15,
-	nrows=5,
-    positions = positions,
-    axis = (; xlabel = "Time windows [s]")
-	)
 	
-end
+	for ix in 1:length(gaze_angles_pure)
+		# leadfields_crd[:,ix] = (
+		# 	equiv_dipole_mag(deepcopy(eyemodel),eyecenter_idx[1],gazevectors[ix]) + equiv_dipole_mag(deepcopy(eyemodel),eyecenter_idx[2],gazevectors[ix])
+		# ).*10e3
 
-# ╔═╡ 448dccc9-97c0-4d6a-a05c-74aa734f3166
-begin
-	plot_topoplot(leadfields_crd[:,idx_plot], positions=pos2dfrom3d(hart_small.electrodes["pos"]), 
-		layout=(; use_colorbar=true), 
-		visual = (; enlarge = 0.65, 
-		# label_scatter = false,
-		# colorrange=(min,max)
-		)
-	)
-	# ceil(Integer,length(gaze_angles_horiz)/2)-5
-end
+		# @info [gazevectors[ix]; gazevectors[ix]]
+		# calculate leadfield due to 2 individual CRD sources and add
+		leadfields_crd[:,ix] = (
+			# leadfield_specific_sources_orientations(deepcopy(eyemodel),eyecenter_idx,[gazevectors[ix]; gazevectors[ix]])
+			leadfield_specific_sources_orientations(deepcopy(eyemodel),eyecenter_idx,gazevectors[ix])
+			# + leadfield_specific_sources_orientations(deepcopy(eyemodel),eyecenter_idx[2],gazevectors[ix])
+		).*10e3
+		# leadfields_crd[:,ix] = (
+		# 	leadfield_specific_sources_orientations(deepcopy(eyemodel),eyecenter_idx[1],gazevectors[ix]) + leadfield_specific_sources_orientations(deepcopy(eyemodel),eyecenter_idx[2],gazevectors[ix])
+		# ).*10e3
+		
+	end
 
-# ╔═╡ bdaffd99-5850-4e75-8ffb-b28176a0cfa4
-leadfields_crd
+	# calculate difference from centre gaze
+	lf_crd_centregaze = leadfield_specific_sources_orientations(deepcopy(eyemodel),eyecenter_idx,gazevec_from_angle(0)).*10e3
+	lf_crd_diff = zeros(size(leadfields_crd))
+	 for ix in 1:length(gaze_angles_pure) 
+	 	lf_crd_diff[:,ix] = leadfields_crd[:,ix] - lf_crd_centregaze
+	 end
+
+	
+	"@NOTE calculate lf for CRDs placed at eye centres"
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 AngleBetweenVectors = "ec570357-d46e-52ed-9726-18773498274d"
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 CoordinateTransformations = "150eb455-5306-5404-9cee-2592286d6298"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
@@ -542,10 +832,10 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 TopoPlots = "2bdbdf9c-dbd8-403f-947b-1a4e0dd41a7a"
 UnfoldMakie = "69a5ce3b-64fb-4f22-ae69-36dd4416af2a"
 UnfoldSim = "ed8ae6d2-84d3-44c6-ab46-0baf21700804"
-WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
 
 [compat]
 AngleBetweenVectors = "~0.3.0"
+CairoMakie = "~0.13.1"
 CoordinateTransformations = "~0.6.4"
 DataFrames = "~1.7.0"
 FileIO = "~1.16.6"
@@ -558,7 +848,6 @@ Statistics = "~1.11.1"
 TopoPlots = "~0.2.2"
 UnfoldMakie = "~0.5.14"
 UnfoldSim = "~0.4.0"
-WGLMakie = "~0.11.1"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -567,7 +856,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.3"
 manifest_format = "2.0"
-project_hash = "b01550f2ca2ed4f57ea9b96051b759b9c2953f95"
+project_hash = "7e499f421a7edcadc5367c0a0be872cbb277a7e6"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -750,22 +1039,11 @@ weakdeps = ["SparseArrays"]
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 version = "1.11.0"
 
-[[deps.BitFlags]]
-git-tree-sha1 = "0691e34b3bb8be9307330f88d1a3c3f25466c24d"
-uuid = "d1d4a3ce-64b1-5f1a-9ba4-7e7e69966f35"
-version = "0.1.9"
-
 [[deps.BitIntegers]]
 deps = ["Random"]
 git-tree-sha1 = "6158239ac409f960abbc232a9b24c00f5cce3108"
 uuid = "c3b6d118-76ef-56ca-8cc7-ebb389d030a1"
 version = "0.3.2"
-
-[[deps.Bonito]]
-deps = ["Base64", "CodecZlib", "Colors", "Dates", "Deno_jll", "HTTP", "Hyperscript", "LinearAlgebra", "Markdown", "MsgPack", "Observables", "RelocatableFolders", "SHA", "Sockets", "Tables", "ThreadPools", "URIs", "UUIDs", "WidgetsBase"]
-git-tree-sha1 = "e48e53213512466cebc99c267e275238aaabad6a"
-uuid = "824d6782-a2ef-11e9-3a09-e5662e0c26f8"
-version = "4.0.3"
 
 [[deps.BufferedStreams]]
 git-tree-sha1 = "6863c5b7fc997eadcabdbaf6c5f201dc30032643"
@@ -792,6 +1070,18 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "e329286945d0cfc04456972ea732551869af1cfc"
 uuid = "4e9b3aee-d8a1-5a3d-ad8b-7d824db253f0"
 version = "1.0.1+0"
+
+[[deps.Cairo]]
+deps = ["Cairo_jll", "Colors", "Glib_jll", "Graphics", "Libdl", "Pango_jll"]
+git-tree-sha1 = "71aa551c5c33f1a4415867fe06b7844faadb0ae9"
+uuid = "159f3aea-2a34-519c-b102-8c37f9878175"
+version = "1.1.1"
+
+[[deps.CairoMakie]]
+deps = ["CRC32c", "Cairo", "Cairo_jll", "Colors", "FileIO", "FreeType", "GeometryBasics", "LinearAlgebra", "Makie", "PrecompileTools"]
+git-tree-sha1 = "6d76f05dbc8b7a52deaa7cdabe901735ae7b6724"
+uuid = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+version = "0.13.1"
 
 [[deps.Cairo_jll]]
 deps = ["Artifacts", "Bzip2_jll", "CompilerSupportLibraries_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "JLLWrappers", "LZO_jll", "Libdl", "Pixman_jll", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Zlib_jll", "libpng_jll"]
@@ -1028,12 +1318,6 @@ git-tree-sha1 = "5620ff4ee0084a6ab7097a27ba0c19290200b037"
 uuid = "927a84f5-c5f4-47a5-9785-b46e178433df"
 version = "1.6.4"
 
-[[deps.Deno_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "cd6756e833c377e0ce9cd63fb97689a255f12323"
-uuid = "04572ae6-984a-583e-9378-9577a1c2574d"
-version = "1.33.4+0"
-
 [[deps.Dictionaries]]
 deps = ["Indexing", "Random", "Serialization"]
 git-tree-sha1 = "1cdab237b6e0d0960d5dcbd2c0ebfa15fa6573d9"
@@ -1141,12 +1425,6 @@ git-tree-sha1 = "b3f2ff58735b5f024c392fde763f29b057e4b025"
 uuid = "429591f6-91af-11e9-00e2-59fbe8cec110"
 version = "2.2.8"
 
-[[deps.ExceptionUnwrapping]]
-deps = ["Test"]
-git-tree-sha1 = "d36f682e590a83d63d1c7dbd287573764682d12a"
-uuid = "460bff9d-24e4-43bc-9d9f-a8973cb893f4"
-version = "0.1.11"
-
 [[deps.Expat_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "d55dffd9ae73ff72f1c0482454dcf2ec6c6c4a63"
@@ -1198,10 +1476,12 @@ deps = ["Pkg", "Requires", "UUIDs"]
 git-tree-sha1 = "2dd20384bf8c6d411b5c7370865b1e9b26cb2ea3"
 uuid = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
 version = "1.16.6"
-weakdeps = ["HTTP"]
 
     [deps.FileIO.extensions]
     HTTPExt = "HTTP"
+
+    [deps.FileIO.weakdeps]
+    HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 
 [[deps.FilePaths]]
 deps = ["FilePathsBase", "MacroTools", "Reexport", "Requires"]
@@ -1351,6 +1631,12 @@ git-tree-sha1 = "b0036b392358c80d2d2124746c2bf3d48d457938"
 uuid = "7746bdde-850d-59dc-9ae8-88ece973131d"
 version = "2.82.4+0"
 
+[[deps.Graphics]]
+deps = ["Colors", "LinearAlgebra", "NaNMath"]
+git-tree-sha1 = "a641238db938fff9b2f60d08ed9030387daf428c"
+uuid = "a2bd30eb-e257-5431-a919-1863eab51364"
+version = "1.1.3"
+
 [[deps.Graphite2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "01979f9b37367603e2848ea225918a3b3861b606"
@@ -1386,12 +1672,6 @@ git-tree-sha1 = "87bd95f99219dc3b86d4ee11a9a7bfa6075000a9"
 uuid = "0234f1f7-429e-5d53-9886-15a909be8d59"
 version = "1.14.5+0"
 
-[[deps.HTTP]]
-deps = ["Base64", "CodecZlib", "ConcurrentUtilities", "Dates", "ExceptionUnwrapping", "Logging", "LoggingExtras", "MbedTLS", "NetworkOptions", "OpenSSL", "PrecompileTools", "Random", "SimpleBufferStream", "Sockets", "URIs", "UUIDs"]
-git-tree-sha1 = "c67b33b085f6e2faf8bf79a61962e7339a81129c"
-uuid = "cd3eb016-35fb-5094-929b-558a96fad6f3"
-version = "1.10.15"
-
 [[deps.HarfBuzz_jll]]
 deps = ["Artifacts", "Cairo_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "Graphite2_jll", "JLLWrappers", "Libdl", "Libffi_jll"]
 git-tree-sha1 = "55c53be97790242c29031e5cd45e8ac296dadda3"
@@ -1415,12 +1695,6 @@ deps = ["LinearAlgebra", "OpenLibm_jll", "SpecialFunctions"]
 git-tree-sha1 = "2bd56245074fab4015b9174f24ceba8293209053"
 uuid = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
 version = "0.3.27"
-
-[[deps.Hyperscript]]
-deps = ["Test"]
-git-tree-sha1 = "179267cfa5e712760cd43dcae385d7ea90cc25a4"
-uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
-version = "0.0.5"
 
 [[deps.HypertextLiteral]]
 deps = ["Tricks"]
@@ -1804,12 +2078,6 @@ version = "0.3.29"
 uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
 version = "1.11.0"
 
-[[deps.LoggingExtras]]
-deps = ["Dates", "Logging"]
-git-tree-sha1 = "f02b56007b064fbfddb4c9cd60161b6dd0f40df3"
-uuid = "e6f89c97-d47a-5376-807f-9c37f3926c36"
-version = "1.1.0"
-
 [[deps.LoweredCodeUtils]]
 deps = ["JuliaInterpreter"]
 git-tree-sha1 = "688d6d9e098109051ae33d126fcfc88c4ce4a021"
@@ -1897,12 +2165,6 @@ git-tree-sha1 = "f45c8916e8385976e1ccd055c9874560c257ab13"
 uuid = "0a4f8689-d25c-4efe-a92b-7142dfc1aa53"
 version = "0.6.2"
 
-[[deps.MbedTLS]]
-deps = ["Dates", "MbedTLS_jll", "MozillaCACerts_jll", "NetworkOptions", "Random", "Sockets"]
-git-tree-sha1 = "c067a280ddc25f196b5e7df3877c6b226d390aaf"
-uuid = "739be429-bea8-5141-9913-cc70e7f3736d"
-version = "1.1.9"
-
 [[deps.MbedTLS_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "c8ffd9c3-330d-5841-b78e-0817d7145fa1"
@@ -1975,12 +2237,6 @@ version = "0.3.4"
 [[deps.MozillaCACerts_jll]]
 uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
 version = "2023.12.12"
-
-[[deps.MsgPack]]
-deps = ["Serialization"]
-git-tree-sha1 = "f5db02ae992c260e4826fe78c942954b48e1d9c2"
-uuid = "99f44e22-a591-53d1-9472-aa23ef4bd671"
-version = "1.2.1"
 
 [[deps.MyterialColors]]
 git-tree-sha1 = "01d8466fb449436348999d7c6ad740f8f853a579"
@@ -2092,12 +2348,6 @@ git-tree-sha1 = "6c1cf6181ffe0aa33eb33250ca2a60e54a15ea66"
 uuid = "fe0851c0-eecd-5654-98d4-656369965a5c"
 version = "5.0.7+0"
 
-[[deps.OpenSSL]]
-deps = ["BitFlags", "Dates", "MozillaCACerts_jll", "OpenSSL_jll", "Sockets"]
-git-tree-sha1 = "38cb508d080d21dc1128f7fb04f20387ed4c0af4"
-uuid = "4d8831e6-92b7-49fb-bdf8-b643e874388c"
-version = "1.4.3"
-
 [[deps.OpenSSL_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "a9697f1d06cc3eb3fb3ad49cc67f2cfabaac31ea"
@@ -2161,6 +2411,12 @@ deps = ["OffsetArrays"]
 git-tree-sha1 = "0fac6313486baae819364c52b4f483450a9d793f"
 uuid = "5432bcbf-9aad-5242-b902-cca2824c8663"
 version = "0.5.12"
+
+[[deps.Pango_jll]]
+deps = ["Artifacts", "Cairo_jll", "Fontconfig_jll", "FreeType2_jll", "FriBidi_jll", "Glib_jll", "HarfBuzz_jll", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "3b31172c032a1def20c98dae3f2cdc9d10e3b561"
+uuid = "36c8627f-9965-5494-a995-c6b170f724f3"
+version = "1.56.1+0"
 
 [[deps.Parameters]]
 deps = ["OrderedCollections", "UnPack"]
@@ -2505,11 +2761,6 @@ git-tree-sha1 = "d263a08ec505853a5ff1c1ebde2070419e3f28e9"
 uuid = "73760f76-fbc4-59ce-8f25-708e95d2df96"
 version = "0.4.0"
 
-[[deps.SimpleBufferStream]]
-git-tree-sha1 = "f305871d2f381d21527c770d4788c06c097c9bc1"
-uuid = "777ac1f9-54b0-4bf8-805c-2214025038e7"
-version = "1.2.0"
-
 [[deps.SimpleTraits]]
 deps = ["InteractiveUtils", "MacroTools"]
 git-tree-sha1 = "5d7e3f4e11935503d3ecaf7186eac40602e7d231"
@@ -2733,12 +2984,6 @@ deps = ["InteractiveUtils", "Logging", "Random", "Serialization"]
 uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 version = "1.11.0"
 
-[[deps.ThreadPools]]
-deps = ["Printf", "RecipesBase", "Statistics"]
-git-tree-sha1 = "50cb5f85d5646bc1422aa0238aa5bfca99ca9ae7"
-uuid = "b189fb0b-2eb5-4ed4-bc0c-d34c51242431"
-version = "2.1.1"
-
 [[deps.TiffImages]]
 deps = ["ColorTypes", "DataStructures", "DocStringExtensions", "FileIO", "FixedPointNumbers", "IndirectArrays", "Inflate", "Mmap", "OffsetArrays", "PkgVersion", "ProgressMeter", "SIMD", "UUIDs"]
 git-tree-sha1 = "f21231b166166bebc73b99cea236071eb047525b"
@@ -2809,11 +3054,6 @@ deps = ["Adapt", "Dictionaries", "Indexing", "SplitApplyCombine", "Tables", "Uni
 git-tree-sha1 = "84fd7dadde577e01eb4323b7e7b9cb51c62c60d4"
 uuid = "9d95f2ec-7b3d-5a63-8d20-e2491e220bb9"
 version = "1.4.6"
-
-[[deps.URIs]]
-git-tree-sha1 = "67db6cc7b3821e19ebe75791a9dd19c9b1188f2b"
-uuid = "5c2747f8-b7ea-4ff2-ba2e-563bfd36b1d4"
-version = "1.5.1"
 
 [[deps.UUIDs]]
 deps = ["Random", "SHA"]
@@ -2888,23 +3128,11 @@ git-tree-sha1 = "7e7e1b4686995aaf4ecaaf52f6cd824fa6bd6aa5"
 uuid = "8149f6b0-98f6-5db9-b78f-408fbbb8ef88"
 version = "1.2.0"
 
-[[deps.WGLMakie]]
-deps = ["Bonito", "Colors", "FileIO", "FreeTypeAbstraction", "GeometryBasics", "Hyperscript", "LinearAlgebra", "Makie", "Observables", "PNGFiles", "PrecompileTools", "RelocatableFolders", "ShaderAbstractions", "StaticArrays"]
-git-tree-sha1 = "d76bbe29bdac0dc4096e3838c044ed079bb8682b"
-uuid = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
-version = "0.11.1"
-
 [[deps.WebP]]
 deps = ["CEnum", "ColorTypes", "FileIO", "FixedPointNumbers", "ImageCore", "libwebp_jll"]
 git-tree-sha1 = "aa1ca3c47f119fbdae8770c29820e5e6119b83f2"
 uuid = "e3aaa7dc-3e4b-44e0-be63-ffb868ccd7c1"
 version = "0.1.3"
-
-[[deps.WidgetsBase]]
-deps = ["Observables"]
-git-tree-sha1 = "30a1d631eb06e8c868c559599f915a62d55c2601"
-uuid = "eead4739-05f7-45a1-878c-cee36b57321c"
-version = "0.1.4"
 
 [[deps.WoodburyMatrices]]
 deps = ["LinearAlgebra", "SparseArrays"]
@@ -3087,34 +3315,45 @@ version = "3.6.0+0"
 # ╠═c24e4fb9-adc3-474b-bafc-12130490260c
 # ╠═b34dd987-fc86-4c0c-b0fd-ee7f10983734
 # ╠═fa7aaded-fcd1-4049-a611-462115614910
+# ╠═05a80c04-af93-47f3-99db-83c0b5a6b920
 # ╠═3756412a-0715-4ae4-9e32-f46978e60a38
 # ╠═fe8025c9-3f52-401f-bbdb-60d0dffafd2a
 # ╠═13c37f0e-aedb-46be-9e50-9955536041de
 # ╠═6eb97701-d8e2-4ef9-b518-1e346246cc53
+# ╠═8d88ae97-f0fc-458b-a0f2-77e5a8db0436
+# ╟─e8341015-2507-483b-8d5b-d5a3d44d376d
 # ╟─a3deace1-21a2-4c5a-a68a-84e31360d986
-# ╠═dc315567-4d47-44dc-aea6-4eb500da2d3d
-# ╠═8d1bc9f2-52fe-48b7-8a77-3a962fb9fd18
-# ╟─e038aaea-2764-4646-943c-69dffdf2b5ba
-# ╠═852bdf41-ade3-49b5-9414-76a51358f81b
-# ╠═8c72282b-476e-4bc2-90a3-09b2f2afa621
+# ╟─dc315567-4d47-44dc-aea6-4eb500da2d3d
+# ╟─8d1bc9f2-52fe-48b7-8a77-3a962fb9fd18
+# ╟─852bdf41-ade3-49b5-9414-76a51358f81b
 # ╠═0e27de95-91f0-4d13-b051-ee1f98090d8e
 # ╠═c23077be-a053-4e8c-957c-0ea11d037b22
-# ╠═a2ad31ef-720b-4345-bcd2-39c4cff8a2bb
+# ╠═b26f09f3-042e-4923-94cc-fb4e4f46cb4a
+# ╠═4670be07-e9b5-4933-b316-9ece432d8f9d
+# ╠═5db66bd1-46e5-4b14-9159-b158bf3faae2
+# ╟─24767682-e72a-4fa1-86bd-ae225fd1bca2
+# ╟─05e14fab-8c76-4aba-ab26-d5d5c21ad88b
+# ╠═2470dcc5-3c43-4308-95e8-cc3ec8e81cb8
+# ╟─778d75cc-dce9-45a2-8282-22a4850a8dd0
+# ╠═4d0f697c-a8f4-4d23-b733-ea6eeac09c48
+# ╟─c9bc39ab-63ba-4a01-98fe-8ad2ef6e20af
 # ╠═27565b1b-50da-49b2-8dba-9cf7d68845f2
 # ╟─445ea476-bd5f-4b50-badb-981b84570544
+# ╠═fbe40b32-0a3f-4a0a-8af5-ac094ae9c189
+# ╟─7ad659bf-e772-4310-96d9-a2f380d244cc
 # ╠═b518df86-2360-4879-b4c3-659965096e46
-# ╠═7ad659bf-e772-4310-96d9-a2f380d244cc
-# ╠═fd7c2c67-4c87-491b-a46b-3f78f4913979
-# ╠═648a601c-892d-41f6-8bfe-c2a5f90d5f27
-# ╠═5738a25c-e8ed-4ce5-a496-5d56a90bcaa8
-# ╠═b926a23d-27ef-4e96-b96f-0b885606231f
-# ╟─457c3997-c641-48d9-9dc0-2034ac668fad
-# ╠═256c6f9f-a1d1-4ff3-a490-435b1dac7264
-# ╠═ff5d1145-927b-4287-ab00-b114ca8bffa8
-# ╠═9bfe8328-3cfe-403e-825f-4a585f2aa2d0
-# ╠═0623c29f-2612-4ee9-8420-2786d9f9dbbb
+# ╠═4b327df0-64c5-42d8-b4a0-569e187e54ce
+# ╟─81c41784-7471-406c-a48f-d7d3c2515a43
+# ╟─d45c0ccf-9b26-4b6f-945d-3947eb9bc2f2
+# ╠═6e1951fe-79fa-4c0f-8cbd-8833cace416a
+# ╟─52fe3ffc-5913-42c2-b264-13913836d6f0
 # ╠═d9add875-4e6a-4e56-bd51-1711cefac056
 # ╠═35263c3c-771f-49d5-b49f-847928ad4270
+# ╠═0623c29f-2612-4ee9-8420-2786d9f9dbbb
+# ╠═0d88dd13-9c5f-4561-a651-e2143fa1c7c9
+# ╠═08a6e1e4-46b0-4871-858d-1f8051e3328f
+# ╠═93c2e63c-b133-4634-9994-1ee333ba2078
+# ╟─457c3997-c641-48d9-9dc0-2034ac668fad
 # ╠═24cb806a-8e79-44c7-8680-46a0a59254b0
 # ╠═2a594d41-f09d-49d7-8729-69394391f7bd
 # ╠═2d7c5dc3-2a5b-41b5-a63b-eb24811e33c4
@@ -3122,7 +3361,17 @@ version = "3.6.0+0"
 # ╠═448dccc9-97c0-4d6a-a05c-74aa734f3166
 # ╠═01eec740-d9fd-400c-8384-d18cc2a47228
 # ╠═fd0aada2-d83d-423b-b849-df397c10bde2
-# ╠═24767682-e72a-4fa1-86bd-ae225fd1bca2
-# ╠═bdaffd99-5850-4e75-8ffb-b28176a0cfa4
+# ╠═d2c528e9-53f0-4e8c-9d66-74a86b0dedd6
+# ╠═80b16351-071e-4e6b-9ca2-1f5c872a3e03
+# ╟─80743fae-e2b9-40b0-a3c8-94681c273b22
+# ╟─8c72282b-476e-4bc2-90a3-09b2f2afa621
+# ╠═28f897bc-1c6d-4c10-888b-c83060c3389b
+# ╟─e74d6606-7329-46b9-97d0-2f038b76b28b
+# ╠═e4ba918c-c5fd-4bb8-95c8-a638f7b9080a
+# ╠═d4c9f9a1-d258-4a38-96d7-bf497f3a5386
+# ╠═bc7b6665-2f5d-46f6-b82f-a60463f184be
+# ╠═43846600-5b96-473b-af41-da3f8710fab4
+# ╠═598856e9-b53f-4e84-9247-a8a8af51a664
+# ╠═d9121839-9e49-4636-9938-787a193fb42d
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
