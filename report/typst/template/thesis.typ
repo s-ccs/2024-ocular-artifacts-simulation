@@ -26,7 +26,6 @@
   let main-language-title = title.at("de", default: "")
   if lang == "en" {
     main-language-title = title.at("en", default: "")
-    set text(region: "GB")
   }
   set document(
     title: main-language-title,
@@ -54,7 +53,7 @@
   ]*/
   text(lang: "en")[
     #filled-frontpage()
-    //#pagebreak()
+    #pagebreak()
   ]
 
   statement(author, date)

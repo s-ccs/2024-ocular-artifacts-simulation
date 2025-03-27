@@ -17,7 +17,7 @@
   date,
 ) = {
   text(font: font)[
-    #place(dx: -40pt, dy: -20pt)[
+    #place(dx: -40pt, dy: -40pt)[
       #box()[
         #image("graphics/unistuttgart_logo_englisch.png", alt: "Logo University of Stuttgart")
       ]
@@ -33,7 +33,7 @@
           #box(width: 100%, height: 100%)[
             #text(translate("title"), size: 2.1em, weight: "bold")
 
-            //#text(translate("subtitle"), size: 1.5em, weight: "bold")
+            #text(translate("subtitle"), size: 1.5em, weight: "bold")
           ]
         ]
       ]
@@ -74,10 +74,10 @@
         #if advisors.len() > 0 [
           #translate("advisors"): #name-with-titles(advisors.at(0))
           #for adv in advisors.slice(1) [
+            
             // there's probably a better way than hiding this
-            // #hide[#translate("advisors"): ]#name-with-titles(adv)
-            // #translate("advisors"):
-            , #name-with-titles(adv)
+            #hide[#translate("advisors"): ]#name-with-titles(adv)
+            // , #name-with-titles(adv)
           ]
         ]
 
@@ -111,18 +111,23 @@
       #set line(stroke: 0.5pt)
 
       #grid(
-        columns: (1fr, 1fr, 1fr),
+        columns: (1fr, 1fr, 1fr, 1fr),
         rows: (auto, auto),
         align: (left, center, center),
-        row-gutter: 4em,
+        row-gutter: 2.5em,
 
         [#translate("city"), #date.display("[day].[month].[year]") #v(2em)],
         signature(author),
         signature(advisors.at(0)),
+        if(advisors.len()>1) {
+              align(center)[
+                #signature(advisors.at(1))
+              ]
+        },
 
-        grid.cell(colspan: 3)[
+        grid.cell(colspan: 4)[
           #align(center)[
-            //#show par: set block(spacing: 0.5em)
+            // #show par: set block(spacing: 0.5em)
             #line(length: 100%)
             #translate("U")
 

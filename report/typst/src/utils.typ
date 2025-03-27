@@ -7,3 +7,8 @@
     [ #p.at("post-title", default: "")]
   }
 }
+
+#let pc = (citation) => {
+  set cite(form: "prose")
+  citation
+} // prose citation helper function from https://github.com/typst/typst/issues/2716#issuecomment-1817870741
