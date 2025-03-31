@@ -1,4 +1,4 @@
-# **Research project:** Project title
+# **Research project:** Simulation of Eye Movement Artefacts in EEG, introducing the Ensemble and Corneo-Retinal Dipole methods
 **Author:** *Maanik Marathe*
 
 **Supervisor(s):** *Jun.-Prof. Dr. rer. nat. Benedikt Ehinger, Judith Schepers, M.Sc.*
@@ -6,17 +6,20 @@
 **Year:** *2024*
 
 ## Project Description
->provide a short description of the main goals - just copy from the proposal
+Understanding the origin of eye movement artefacts in EEG and simulating eye movements using a forward model of the head.
 
-## Zotero Library Path
->Please provide the link to the Zotero group here or include a `Bib`-File in the `report` folder
+## Bibliography
+See `report/typst/bibliography.bib`.
 
 ## Instruction for a new student
->If a fellow student wants to reproduce all your results. What scripts, in which order, with which data need to be run?
->
->Be as specific as possible. Plan to spend **at least 1h** on this.
->
->Optional: Add a pipeline plot in which the different steps are displayed together with the corresponding scripts.
+- The code for this project is mainly in the form of Pluto.jl notebooks.
+- High-level simulation: The notebook `notebooks/eval.jl` contains all the necessary steps to simulate a pure horizontal or pure vertical eye movement. To select the horizontal or vertical option for simulation, set the value of the variables `gazevectors` and `sacc_direction` accordingly. E.g., `gazevectors = gazevectors_horiz; sacc_direction = "horiz"` for horizontal gaze movement.
+  - Note that CairoMakie is required for exporting the 2D plots as images, but WGLMakie is required for viewing and interacting with the 3D plots of the eye model source locations and orientation vectors.
+  - The points of interest in the notebook are marked with "@NOTE" and roughly describe the steps in the simulation.
+- For a more in-depth look into the exact steps of the simulation, see `notebooks/simulate.jl`.
+- To explore the HArtMuT model in more detail, see `notebooks/hartmut-playground.jl`.
+- Utility functions are defined either in the notebook file itself, or in `scripts/utils.jl` (included in the Pluto notebook using Revise.jl). If you make a change in `scripts/utils.jl`, re-run the cell containing `@use_file include("../scripts/utils.jl")` so that the updates are included in the notebook. 
+- If the 2D/3D plot cells run but the plots are not visible, try running `WGLMakie.Page()` and then re-running the plotting cells.
 
 ## Overview of Folder Structure 
 
@@ -25,10 +28,9 @@
 │                       repository with a reasonable .gitignore file.
 │
 ├── report           <- **Immutable and add-only!**
-│   ├── proposal     <- Proposal PDF
 │   ├── thesis       <- Final Thesis PDF
-│   ├── talks        <- PDFs (and optionally pptx etc) of the Intro,
-|   |                   Midterm & Final-Talk
+│   |  ├── typst     <- Files for creating the report using Typst
+│   ├── talks        <- PDF of the Final-Talk
 |
 ├── _research        <- WIP scripts, code, notes, comments,
 │   |                   to-dos and anything in an alpha state.
@@ -60,5 +62,3 @@
 └── (Requirements.txt)<- in case of python project - can also be an anaconda file, MakeFile etc.
                         
 ```
-
-\*Instead of having a separate *notebooks* folder, you can also delete it and integrate your notebooks in the scripts folder. However, notebooks should always be marked by adding `nb_` in front of the file name.
