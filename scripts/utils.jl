@@ -114,24 +114,30 @@ function topoplot_leadfields_difference(lf1,lf2,pos2d; labels=["","","",""], com
 	Label(f[2,2][1, 1:2, Top()], labels[4], valign = :bottom, font = :bold, padding = (0, 0, 5, 30))
     if (commoncolorrange)
         plot_topoplot!(
-            f[1,1], lf1, positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = false,colorrange=(min,max)))
+            f[1,1], lf1, positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = false,colorrange=(min,max))
+            ,axis = (; xlabel = "",), colorbar = (; height = 200,label="Potential"))
         plot_topoplot!(
-            f[1,2], lf2, positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = false,colorrange=(min,max)))
+            f[1,2], lf2, positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = false,colorrange=(min,max))
+            ,axis = (; xlabel = "",), colorbar = (; height = 200,label="Potential"))
         plot_topoplot!(
-            f[2,1], lf2-lf1, positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = false,colorrange=(min,max)))
+            f[2,1], lf2-lf1, positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = false,colorrange=(min,max))
+            ,axis = (; xlabel = "",), colorbar = (; height = 200,label="Potential"))
         plot_topoplot!(
-            f[2,2], (lf2-lf1).*0.01,
+            f[2,2], (lf2-lf1),
             positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = true,colorrange=(min,max)))
         Colorbar(f[:,3]; limits=(min,max), colormap = Reverse(:RdBu))
     else
         plot_topoplot!(
-            f[1,1], lf1, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false,))
+            f[1,1], lf1, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false,)
+            ,axis = (; xlabel = "",), colorbar = (; height = 200,label="Potential"))
         plot_topoplot!(
-            f[1,2], lf2, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false,))
+            f[1,2], lf2, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false,)
+            ,axis = (; xlabel = "",), colorbar = (; height = 200,label="Potential"))
         plot_topoplot!(
-		f[2,1], lf2-lf1, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false,))
+            f[2,1], lf2-lf1, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false,)
+            ,axis = (; xlabel = "",), colorbar = (; height = 200,label="Potential"))
         plot_topoplot!(
-            f[2,2], (lf2-lf1).*0.01,
+            f[2,2], (lf2-lf1),
             positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = true,))
     end
 	return f
