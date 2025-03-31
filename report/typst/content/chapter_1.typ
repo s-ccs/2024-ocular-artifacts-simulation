@@ -1,7 +1,5 @@
-#import "@preview/abbr:0.2.3"
-#import "@preview/big-todo:0.2.0": *
-#import "../src/utils.typ": pc
-    
+#import "../src/utils.typ": * 
+
 = Introduction
 
 #abbr.l("EEG") is a method of recording the electrical activity of the brain via a set of electrodes (or sensors), usually placed on the scalp and/or the facial skin of the subject. When taking an EEG measurement, an appropriate electrode positioning system is chosen out of the several available standardized systems, and the electrodes are arranged on the scalp according to the selected system.
@@ -12,27 +10,24 @@ During an EEG recording, each of the electrodes measures the electrical potentia
 
 Ideally, the recorded EEG data would contain pure signal, i.e. just the scalp potentials resulting from brain activity. However, there are often a number of sources of noise in the recorded EEG, such as power line noise (from the alternating current electrical power supply) or slow drifts or noise present at a certain problematic electrode. Such noise can be removed during preprocessing of the data, for example by filtering the data or by discarding or interpolating the data for a noisy electrode.
 
-In addition, there is another category of unwanted potentials (or "artefacts") present in the recorded EEG data. Various biological processes occurring in the body also involve electrical activity. For example, the muscles of the head, face, and neck are electrically activated when moving the head or eyes, when talking, and so on. The electrical activity during the heartbeat generates a measurable potential (the electrocardiogram). The movement of the eyeball itself also causes a change in the measured scalp potential, as does the action of blinking. These processes cause additional changes in the electrical potential measured by the EEG electrodes.
+In addition, there is another category of unwanted potentials (or "artefacts") present in the recorded EEG data. Various biological processes occurring in the body also involve electrical activity. For example, the muscles of the head, face, and neck are electrically activated when moving the head or eyes, when talking, and so on. The electrical activity during the heartbeat generates a measurable potential (the electrocardiogram). The movement of the eyeball itself also causes a change in the measured scalp potential, as does the action of blinking. These processes thus modify the electrical potential measured by the EEG electrodes.
 
-These effects can be much larger in magnitude than the potentials recorded from the brain activity, and therefore cause problems during analysis since they may obscure the data related to brain activity. Thus, the presence of these undesirable potentials (or artefacts) in the data needs to be minimized in order to have a clean signal containing as far as possible only the measured brain activity. 
+These artefact effects can be much larger in magnitude than the potentials recorded from the brain activity, and therefore cause problems during analysis since they may obscure the data related to brain activity. Thus, their presence in the data needs to be minimized in order to have a clean signal containing as far as possible only the measured brain activity. 
 
 The removal of these artefacts can be done either by avoiding the artefacts at the time of recording (for example, by asking the subject to move as little as possible during the recording), or by removing the artefacts after the data has been recorded. The simplest way to do this is by manual inspection of the data by an expert, marking the contaminated sections of data and removing those sections before analysis. However, this is difficult and time-consuming, and results in less data available for analysis. Therefore, automated methods have been developed for removing artefacts and repairing the contaminated trials, of which two popular examples are #abbr.a("ICA") (a Blind Source Separation technique) and linear regression. 
 
 
-== Simulation of EEG data
+== Simulation of EEG data and artefacts
 
 For analyzing recorded data, software implementations of data analysis and artefact correction methods are provided in the form of packages, such as in autoreject @jas:hal-01313458, EEGLAB @delorme_eeglab_2004, MNE @larson_mne-python_2024, and Unfold.jl @ehinger_unfoldjl_2025. These can be tested using real datasets from EEG recording studies. 
 
 To reduce the dependence on real datasets, simulating EEG data is also useful for developing and testing such software tools. It is useful to be able to specify a ground truth for the simulation, in order to better evaluate the results of applying the analysis methods on the simulated data. Software packages like SEREEGA @krol_sereega_2018, MNE @larson_mne-python_2024, and UnfoldSim.jl @Schepers2025 provide support to simulate EEG data from brain sources and to add different kinds of random noise to the data. 
 
-However, realistic simulation of biological artefacts like eye movements is not yet available, and therefore simulated data is still dissimilar to real data in this aspect. 
-#todo("rephrase better.", inline: true)
-
-#todo("check for if they at all simulate bio. artefacts, or if they just simulate noise", inline: true)
+Some previous studies have also involved simulating eye movement artefacts and adding them to simulated EEG signals. For example, #pc[@barbara_monopolar_2023] extended a previously-defined battery model of the eye, and simulated eye movements where both eyes were fixated on the same onscreen target (i.e., not looking in parallel gaze directions, but rather focused on one object closer to the face). However, a general method for realistic simulation of the different types of biological artefacts like eye movements, blinks etc. is not yet available, and therefore simulated data is still dissimilar to real data in this aspect.
 
 == Aim and scope of this project
 
-As seen in the preceding sections, artefacts in real EEG data are undesirable and need to be removed before starting to process the data for research, and tools have been created to perform this removal. Current methods for simulation of data do not allow for creating realistic artefacts along with the brain-source data. We wanted to better understand how these artefacts come about, and using this understanding, work towards simulating them.
+As seen in the preceding sections, artefacts in real EEG data are undesirable and need to be removed before starting to process the data for research, and tools have been created to perform this removal. Current methods for simulation of data do not allow for creating realistic artefacts along with the brain-source data. We wanted to better understand how these artefacts come about, and using this understanding, work towards a method of realistic artefact simulation.
 
 Thus, in this project, we first investigate the origin of the measured EEG potentials during eye movements, and describe two possible methods to simulate these potentials. We then simulate two kinds of movements with these methods, namely a purely horizontal movement and a purely vertical one, and qualitatively examine the simulation results using a topography plot of the difference in potentials between two gaze directions.
 
@@ -50,237 +45,294 @@ Electric potential differences present in human tissues can be represented by me
 
 #figure(
   image("../src/graphics/fig source dipole.png", width: 30%),
-  caption: [Current dipole representing a potential difference.],
-) <source_dipole>
+  caption: "Electrical current dipole representing a potential difference"
+)
 
-When such a current dipole (also called "*source dipole*") is placed in a three-dimensional conducting medium (known as a "volume conductor"), it creates an electrical potential field around it. The resulting potential at any point in space can be described by a set of three vectors in the three coordinate directions, and this is known as the "*lead vector*" or "*lead field*". For a specific orientation of the source dipole, the resultant potential at a point in space can be calculated by multiplying together the source dipole's orientation and the lead vector at that point in space.
+#v(0pt, weak: true)
 
+When such a current dipole (also called "*source dipole*") is placed in a three-dimensional conducting medium (known as a "volume conductor"), it creates an electrical potential field around it. The resulting potential at any point in space can be described using a set of three vectors in the three coordinate directions, and this is known as the "*lead vector*" or "*lead field*". For a specific orientation of the source dipole, the resultant potential at a point in space can be calculated by multiplying together the source dipole's orientation and the lead vector at that point in space.
 
 === Head Model <eeg-head-model>
+In EEG research, a 'head model' describes the head and the biological tissues in it as a conducting medium that conducts electrical potentials @hari_meg-eeg_2017 @malmivuo_bioelectromagnetismprinciples_1995. The simplest head model is a homogeneous sphere, made of the same material throughout. In reality, different tissues have different conductivities, and this impacts the conduction of the electrical potentials through the head. The head model can thus be improved by subdividing the head volume into different tissue types, and then by assigning the respective tissue conductivity to each section. 
 
-In EEG research, a 'head model' describes the head and the biological tissues in it as a conducting medium that conducts electrical potentials @hari_meg-eeg_2017 @malmivuo_bioelectromagnetismprinciples_1995. The simplest head model is a homogeneous sphere, made of the same material throughout. In reality, different tissues have different conductivities, and this impacts the conduction of the electrical potentials through the head. The head model can thus be improved by creating subsections of the contained volume in order to represent the different tissues in the head, and then by assigning each section the conductivity of its respective tissue type. 
+When a source dipole is placed in such a volume conductor, the task of calculating the resultant potentials at each measured point on the head surface is known as the "forward problem" @malmivuo_bioelectromagnetismprinciples_1995, and a head model containing information is known as a "*forward model*". 
 
-The task of calculating the resultant potentials at each measured point is known as the "forward problem" @malmivuo_bioelectromagnetismprinciples_1995, and a model that describes the potentials at the surface of the head resulting from specific sources inside the head, is known as a "*forward model*". 
+In this project, we have used the #abbr.a("HArtMuT") @harmening_hartmutmodeling_2022 as a forward model to simulate scalp potentials. We represent the electrical potential differences located in the eyes by selecting appropriate source points from the head model, and calculate the scalp potentials using the corresponding lead fields provided.
 
-In this project, we will use the #abbr.a("HArtMuT") @harmening_hartmutmodeling_2022 as a forward model to simulate scalp potentials. We will represent the electrical potential differences located in the eyes by selecting appropriate source points from the head model, and calculate the scalp potentials using the corresponding lead fields provided.
+=== Gaze Direction Vector
+The "gaze direction vector" for an eye is a vector in the same coordinate system as the head model, having unit length and pointing from the center of the eye in the direction of the object that the subject is looking at. The location of this vector is not important as it only describes a direction. 
 
+We assume that the eyeball is symmetric around the axis described by the gaze direction vector, and thus this gaze direction vector will always pass through the center of the cornea. 
+
+When the viewed object is sufficiently far away from the subject, we can assume that the gaze directions of both eyes are parallel to each other. Thus the individual gaze directions can be described by a single, common gaze direction vector. 
 
 = Origin and modelling of eye artefacts
 
 == Eye artefacts in EEG
-// add images of what the different eye artefacts look like: EM, blink, ... ; talk about prev studies where they looked at eye artefacts and write what they concluded in short. 
-The main sources of eye-related EEG artefacts are eyeball movements, eyelid movements (including blinks), and eye muscle activation. Each of these artefacts arises due to a physiological property of the corresponding process: eye muscle artefacts are generated due to activation of the muscles used in order to move the eyes; eyeball rotations involve movement of the eyeball which has its own electrical charge distribution (see @crd); and eyelid movement can contribute to multiple artefacts.
 
-According to #pc[@iwasaki_effects_2005], the eyelids move along with eye movements, and greatly influence the frontal EEG observed during vertical eye movements. #pc[@matsuo_electrical_1975] explain the blink artefacts as resulting from the interaction between the eyelid and the charged surface of the cornea at the front of the eyeball, where the eyelid conducts the positive charges from the cornea towards the frontal electrodes. #pc[@lins_ocular_1993] also discussed the "rider artefact", a brief blink-like distortion observed at the beginning of saccades.
+The main physiological sources of eye-related EEG artefacts are eyeball movements, eye muscle activation, and eyelid movements. Eyeball movements involve rotation of the eyeball which has its own electrical charge distribution (see @crd); eye muscle artefacts are generated due to activation of the muscles used in order to move the eyes. Eyelid movement can contribute to multiple artefacts: according to #pc[@iwasaki_effects_2005], the eyelids move along with eye movements, and greatly influence the frontal EEG observed during vertical eye movements. #pc[@matsuo_electrical_1975] explain blink artefacts as resulting from the interaction between the eyelid and the charged surface of the cornea at the front of the eyeball, where the eyelid conducts the positive charges from the cornea towards the frontal electrodes (also known as the "sliding electrode" effect).
 
-Along with the EEG signals measured at the scalp electrodes, the #abbr.a("EOG") signal is also calculated from the electrodes placed near the eyes. Two kinds of EOG signals can be calculated - horizontal, as a difference between the potentials measured at the electrodes placed at the outer edges of the left and right eyes, and vertical, as the difference between potentials measured by electrodes placed above and below the eye. The EOG is often examined in relation to eye movement, as these electrodes are located closest to the eyes and therefore record the strongest eye-related potentials. Similarly, the scalp electrodes at the front of the head closest to the eye also show the largest effect of eye artefacts.
-#todo("diags of eog & blink artefacts (primer)?", inline: true)
+Along with the EEG signals measured at the scalp electrodes, the #abbr.a("EOG") signal is often calculated using the electrodes placed near the eyes. Two kinds of EOG signals can be calculated: horizontal, as the difference between the potentials measured at the electrodes placed at the outer edges of the left and right eyes, and vertical, as the difference between potentials measured by electrodes placed above and below the eye. The EOG is often examined in relation to eye movement, as these electrodes are located closest to the eyes and therefore record the strongest eye-related potentials.
 
-In the coming sections, we will discuss in some more detail the origin of EEG artefacts specifically arising from eyeball movement and some methods of modelling the eyeballs in order to later simulate these artefacts.
+In the coming sections, we will discuss in some more detail the origin of the EEG artefacts specifically arising from eyeball movement and describe two methods of modelling the eyes in order to later simulate these artefacts.
 
 
 == Eye structure and corneo-retinal dipole (CRD) <crd>
 
-The eye is composed of various types of tissue (e.g. cornea, retina, sclera, choroid), and certain sections of the eyeball are also filled with fluid (aqueous and vitreous humor). Each of these tissues and fluids have their own electrical properties, in particular their electrical conductivity, which influences how they conduct electrical potential. Certain structures also have inherent charge distributions caused due to properties of the cells making up the tissue. 
+The eye is composed of various types of tissue (cornea, retina/sclera/choroid), and parts of the eyeball are filled with fluid (aqueous and vitreous humor). Each of these tissues and fluids have their own electrical conductivity, which influences how they conduct electrical potential. In addition, certain tissue types also have inherent charge distributions caused due to properties of the cells making up the tissue. 
 
-Previous studies like #pc[@mowrer_corneo-retinal_1935] and #pc[@matsuo_electrical_1975] showed that an intact eyeball is required in order to see the EOG effects due to eye movements. The retina and cornea have each been shown to have a potential difference between their inner and outer surfaces 
-#todo("reference", inline: true)
-This leads to an overall potential difference between the front and the back of the eye, which can be approximated as a single electrical current dipole with its positive end towards the cornea at the front, following the axis of gaze @plochl_combining_2012. This single dipole is called the "corneo-retinal potential" @mowrer_corneo-retinal_1935 or "*#abbr.a[CRD]*"
-#todo("reference; steinberg_1983 - check actual ref in lins.", inline: true) 
-and is a basis of the model of eye movements in existing studies (@berg_dipole_1991 ((ref))).
- #todo("add ref", inline: true)). 
+Previous studies like #pc[@mowrer_corneo-retinal_1935] and #pc[@matsuo_electrical_1975] showed that an undamaged eyeball is required in order to see the EOG effects due to eye movements. The retina and cornea have each been shown to have a potential difference between their inner and outer surfaces, with the retina being more positive towards the inside of the eyeball compared to the outside, and the cornea being more positive towards the outside of the eyeball than on the inside @iwasaki_effects_2005. These potentials give rise to an overall potential difference between the front and the back of the eye, with the front of the eye being more positive compared to the back. This potential difference is called the "corneo-retinal potential" @mowrer_corneo-retinal_1935 and is a basis of the model of eye movements in existing studies @berg_dipole_1991 @plochl_combining_2012 @lins_ocular_1993. This potential can be approximated as a single electrical current dipole with its positive end towards the cornea at the front, following the axis of gaze @plochl_combining_2012, and this is commonly known as the "*#abbr.a[CRD]*".
 
- #todo("add figure simple CRD (or point to the figure from one of the ref.s e.g. primer? see other todo note above)", inline: true)
+#figure(
+  grid(columns: 1, rows: (250pt, 30pt), row-gutter: 3mm,
+    image("../src/graphics/eyecharges_crd.png"),
+    "Vertical section of the eyeball with corneo-retinal dipole represented by the large black arrow. 
+    Reproduced from " + pc[@hari_meg-eeg_2017] + ".",
+  ),
+  caption: "Eyeball charges and corneo-retinal dipole"
+)
 
-#todo("figure from M/EEG primer showing eye charges and CRD in the same image", inline: true)
-
-Although sources agree that the retina is positive on the inside of the eyeball compared to the outside, there is some difference of opinion about the contribution of the cornea to the corneo-retinal dipole. Authors including #pc[@berg_dipole_1991], #pc[@plochl_combining_2012], and #pc[@hari_meg-eeg_2017] in their discussions of the corneo-retinal dipole do not mention the charge of the cornea itself at all. According to #pc[@lins_ocular_1993-1], the outer side of the cornea is negative relative to the inner side. 
+Although sources agree that the charge distribution in the retina is part of the cause for the corneo-retinal dipole, there is some difference of opinion about the contribution of the cornea. #pc[@berg_dipole_1991], #pc[@plochl_combining_2012], and #pc[@hari_meg-eeg_2017] in their discussions of the corneo-retinal dipole do not mention the charge of the cornea itself at all. 
 
 However, the concept of the corneo-retinal dipole as it is described here (i.e., a potential difference between the front and back of the eye, being overall positive at the front compared to the back) is common to all the previous studies reviewed in this area.
 
-When the subject in an EEG recording changes their gaze direction, the eyeball rotates in its socket and the charged tissues also accordingly move in space. This change in the spatial distribution causes a change in the resultant electric potential measured at each of the scalp electrodes, and this change is visible in the EEG recordings as an eye movement artefact @mowrer_corneo-retinal_1935. For example, in a movement going from center gaze (looking straight ahead) to looking to the left, we would expect the electrodes on the left to measure a more positive potential after the movement than before, and in an upward eye movement we expect the electrodes above the eyes to be more positive after the movement as well. We can use these predictions at a later stage during the qualitative analysis of our simulation results.
 
-== Modelling eyes and eye movement artefacts
+== Modelling: CRD and Ensemble methods
 
-// source modelling - explain from primer pg.35 ch.3
+A common approach when modelling eye movement and blink artefacts in EEG artefact removal is to consider a certain set of source dipoles placed in or near the eyes, varying their position and orientation such that their contribution to the scalp topography explains as much of the artefact as possible. For example, #pc[@berg_dipole_1991] considered "equivalent dipoles" representing the effect of the difference between the CRD position and orientation at the start versus at the end of the movement.
 
-A common approach when modelling eye movement and blink artefacts in EEG is to consider a certain set of source dipoles placed in or near the eyes, varying their position and orientation such that their contribution explains as much of the artefact as possible (in terms of scalp topography data resulting from that source dipole). For example, #pc[@berg_dipole_1991] considered "equivalent dipoles" representing the effect of the difference between the CRD position and orientation at the start versus at the end of the movement. @lins_ocular_1993 successfully modelled the rider artefact using the same source dipoles as they used for modelling the blink artefact.
+If instead we directly consider the concept of the corneo-retinal dipole, it is also possible to represent the CRD itself as a single source dipole placed in the eye (say, at the center) and oriented in the direction of eye gaze. In order to simulate an eye movement, this dipole can be reoriented according to the gaze direction at each point in time, and the corresponding scalp topography at each time point can be calculated. We will call this model the "*corneo-retinal dipole method*" or the "*CRD method*".
 
-If instead we directly consider the concept of the corneo-retinal dipole, it is also possible to represent the CRD itself as a single source dipole placed in the eye (say, at the center) and oriented in the direction of eye gaze. In order to simulate an eye movement, this dipole can be reoriented according to the gaze direction at each point in time, and the corresponding scalp topography at each time point can be calculated. 
+An even more detailed method of simulation can be achieved by using a number of "Equivalent Current Dipoles" in order to model the inherent electric potentials of the eye tissues, as done by #pc[@harmening_hartmutmodeling_2022] (further described in @hartmut-info). The equivalent current dipoles should each have an orientation according to the direction of their tissue potentials: dipoles placed in the cornea point outwards, since the cornea is more positive on the outside of the eyeball, and similarly the retina dipoles point inwards. We will call this method the "*ensemble method*". The ensemble method allows us to simulate the change in spatial distribution of the retina and cornea tissue charges as they move during the eye movement. 
 
-Alternatively, an even more detailed model can be created using the electric potentials present 
-#todo("check the exact technical term w/ src, for 'standing potentials'", inline: true) 
-in the eye tissues. These can be represented in the form of "Equivalent Current Dipoles", as done in #pc[@harmening_hartmutmodeling_2022] (further described in @hartmut-info). The equivalent current dipoles should each have an orientation according to the direction of their tissue potentials: dipoles placed in the cornea point outwards, since the cornea is more positive on the outside of the eyeball, and similarly the retina dipoles point inwards. 
+The next chapter describes our method of simulation using the two models introduced above.
 
+
+= Simulation of eye movements
+
+Now that the two models of the eye have been defined, we can use a forward model to simulate scalp topographies with both of these models.
+
+== Assumptions and simplifications in our model
+
+For this project, we have assumed each eye to be perfectly spherical. In reality, the eyes are more or less spherical, but the surface bulges out slightly at the front. In addition, certain medical conditions like myopia, hypermetropia etc. may cause the eyes to be slightly deformed. However, we have considered the simplest scenario of a healthy subject with perfectly spherical eyes.
+
+Next, we assume that the cornea tissue is symmetrically distributed around the axis pointing from the center of the eye outwards towards the direction of gaze. We also assume that during an eye movement, the eye only rotates about its center and is not translated (although some studies like #pc[@moon_positional_2020] show that some translation may occur). 
+
+Further, some sources @plochl_combining_2012 indicate that the magnitude of the potentials in the eye changes over time, in particular due to illumination. This is not accounted for in our current model.
+
+
+
+== Selected forward model: HArtMuT <hartmut-info>
+
+As described in @eeg-head-model, a forward model is useful in computing lead fields from specific source dipole locations. The #abbr.l("HArtMuT") @harmening_hartmutmodeling_2022 is one such forward model. It provides a set of "cortical" source dipole locations placed within the brain, and another set of "artefactual" sources placed on the surface of the eyes and within the muscles. For each of these source points, the model contains lead field vectors for a set of 227 electrode positions on the scalp, neck, and face.
+
+In this project, we have used the HArtMuT source locations present on the eye surface. These fall into two categories: labelled either "Cornea" or "Retina/Choroid/Sclera". There are sources placed in each individual eye, as well as a set of symmetric sources in a vertical plane between the two eyes, that produce the same effect as summing the lead fields of corresponding individual eye points. We decided to use individual eye source points in order to stay as close as possible to the biological model, as well as to have independent control over the points of each eye, giving us more flexibility during simulation. 
+
+#figure(grid(columns: 3, rows: (auto, 30pt, 30pt, 5pt), row-gutter: 3mm, column-gutter: 4mm, align: bottom,
+
+  image("../src/graphics/em_compare_hartmut_angleview.png"), image("../src/graphics/em_compare_hartmut_frontview.png"), image("../src/graphics/em_compare_hartmut_topview.png"), 
+
+  "a) Viewed from the front-right side of the head", "b) Viewed head-on from in front of the eyes", "c) Viewed from the top down, gaze towards the top of the page",
+
+  grid.cell(colspan: 3, "Three-dimensional plot: cornea points in blue, retina points in yellow.
+  Created using Makie.jl " + [@DanischKrumbiegel2021]),
+),
+
+  caption: "HArtMuT eye source locations"
+)
+
+However, certain changes were required to the eye source locations before running the simulation step. In the original model, the eye source point locations did not describe a sphere, and the cornea-type points were more densely clustered than the retina-type points. This would violate our assumption of spherical eyeballs and result in a bias towards the "cornea" source locations compared to the "retina" locations. Thus, our main requirements were that the eye sources be distributed in a more spherical shape and that the retina and cornea source types have a similar density of spacing across the surface of the eye. 
+
+We corresponded with Nils Harmening, one of the authors of the original paper and developers of the HArtMuT model, to better understand how the model was created. We also discussed our ideas for improvements in order to have sources and lead fields that were better suited to our purpose. After our discussion, an updated "eye"-model was then recalculated, with the eye sources at the new source locations.
+
+#figure(grid(columns: 3, rows: (auto, 30pt, 30pt, 5pt), row-gutter: 3mm, column-gutter: 4mm, align: bottom,
+
+  image("../src/graphics/em_compare_sph_angleview.png"), image("../src/graphics/em_compare_sph_frontview.png"), image("../src/graphics/em_compare_sph_topview.png"), 
+
+  "a) Viewed from the front-right side of the head", "b) Viewed head-on from in front of the eyes", "c) Viewed from the top down, gaze towards the top of the page",
+
+  grid.cell(colspan: 3, "Three-dimensional plot: cornea points in blue, retina points in yellow.
+  Created using Makie.jl " + [@DanischKrumbiegel2021]),
+),
+
+  caption: "Updated (spherical) eye model source locations"
+)
+
+The original head model also had two sets of sources for cornea points, with the same location but different orientations. Ignoring the duplicated sources, the updated model had a different proportion of retina and cornea source locations than that of the original HArtMuT head model eye sources, and more source points overall. The differences are summarized in @eyemodel-diff.
+
+#v(20pt, weak: true)
+
+#figure(
+  table(
+  inset: 5pt,
+  columns: (auto, auto, auto, auto),
+  table.header(
+    [*Model*], [*Cornea points count*], [*Retina Points count*], [*Total eye points*]
+    ),
+  "HArtMuT model", "240", "360", "600",
+  "Updated eye model", "134", "705", "839",
+  ),
+  caption: [Comparison between eye source counts in the original and modified forward model],
+  gap: 10pt,
+) <eyemodel-diff>
+
+#v(-5pt, weak: true)
+
+The current version of the HArtMuT model considers the eyes as part of the skin rather than as a separate tissue type with its own conductivity. This also results effectively in a "closed eyelid" state. Future simulations with our model could take this into account and remove the "closed eyelid" effect using more realistic conductivities and updated source dipole strengths. For this, we have also discussed a further update to this model, where the eyes will be considered as having their own distinct conductivity rather than taking on the conductivity of the skin. This intermediate eye-model is currently unpublished and still under development, and may be adapted in future based on further collaboration. 
+
+== Simulating scalp topography using the forward model
+
+This section describes the steps required in both methods for simulating the EEG topography for a particular gaze direction.
+
+=== Corneo-retinal dipole method 
+For the corneo-retinal dipole method, we do this by using a single source point placed at the center of each eyeball and having an orientation parallel to the gaze direction. The leadfield for the individual eye center point gives the scalp topography for that eye, and for the overall scalp topography we add the leadfields of both of the eye center dipoles.
+
+=== Ensemble method
+The ensemble method requires some additional steps. We make use of the set of HArtMuT head model source points with retina and cornea labels. Each source point has a fixed position provided in the head model, and we calculate an orientation vector with respect to the center of the respective eyeball. These vectors will help define the source dipoles at each of these locations. 
 
 #figure(
   image("../src/graphics/fig charges dipoles representation.png", width: 100%),
   caption: [Representation of eyeball charges using source dipoles (top-down view, cross-section)],
 ) <charges_representation>
 
-The most detailed method allows us to try to derive the EEG scalp potentials from first principles i.e. simulating the charge distribution of the retina and cornea tissues as they move during the eye movement. Additionally, since the concept of the corneo-retinal dipole is widely used in the literature, we were interested in comparing the data simulated via this approach to that simulated using the highly-detailed model with many source dipoles. Therefore, in the simulation phase of this project, we will be using the above two models, which we will call the "ensemble" model and the "CRD" model respectively.
-
-= Simulation of eye movements
-
-// optionally, split the  'previous studies' section and put prev simulation approaches here. then add a section about our approach and nest the hartmut section under it. Or have a section about forward model in general. Or put it in appendix?
-
-== Selected forward model: HArtMuT <hartmut-info>
-
-As described in @eeg-head-model, a forward model is useful in computing lead fields from specific source dipole locations. The #abbr.l("HArtMuT") @harmening_hartmutmodeling_2022 is one such forward model. It provides a set of source dipole locations placed within the brain, on the surface of the eyes, and within the muscles. For each of these source points, the model contains lead field vectors for a set of 227 electrode positions on the scalp, neck, and face.
-
-#todo("write a bit about how hartmut is like an average of different heads?", inline: true) 
-
-In this project, we have used the HArtMuT source locations present on the eye surface. These fall into two categories: labelled either "Cornea" or "Retina/Choroid/Sclera". There are sources placed in each individual eye, as well as a set of symmetric sources in a vertical plane between the two eyes, that produce the same effect as summing the lead fields of corresponding individual eye points. We decided to use individual eye source points in order to stay as close as possible to the biological model, as well as to have independent control over the points of each eye, giving us more flexibility during simulation. 
-
-#todo("fix description - not just corresponding but collaborating. also that our discussion led to an improvement e.g. using different tissue type for eyes.", inline: true) 
-While working on this project, we corresponded with Nils Harmening, one of the authors of the original paper and developers of the HArtMuT model, to better understand how the model was created. We also discussed our ideas for improved source locations in order to have sources and lead fields that were better suited to our purpose. He then recalculated an updated "eye"-model, with the eye sources at the new source locations. Our main requirements were that the eye sources be distributed in a more spherical shape and that the retina and cornea source types be spaced out with similar density over the surface of the eye. We have also discussed a further update to this model, where the eyes will be considered as having their own distinct conductivity rather than taking on the conductivity of the skin. This intermediate eye-model is currently unpublished and still under development, and may be adapted in future based on further discussion.
-
-#todo("placeholder: figure old vs. new eye model: HArtMuT headmodel 3d plot showing eye separate and combined sources;  figure eyemodel 3d plot with rounder eyes", inline: true)
-
-== Previous studies on eye movement topography and simulation
-
-// When the eye gaze rotates towards a particular direction, the cornea moves closer to the electrodes in that direction and the retina moves away from them. Since the cornea is positively charged relative to the retina, the electrodes near the new cornea position show a positive deflection and those away from it show a negative deflection. 
-
-((small summary of results from Plöchl et al. - general + about small/large Horiz./vert. movements))
-
-Some previous studies have also involved simulating eye movement artefacts and adding them to simulated EEG signals. #pc[@barbara_monopolar_2023] extended a battery model of the eye, and simulated eye movements where both eyes were fixated on the same onscreen target (i.e., not looking in parallel gaze directions, but rather focused on one object closer to the face).  ((the original paper talking about the battery model is not easily found - need to search for this to understand more in detail))
-
-#pc[@gawne_effect_2017] and #pc[@kierkels_model-based_2006] also simulated eye movements, however they worked with #abbr.pll("MEG"), which are related to but different from EEG.  ((to be described in more detail))
-
-#todo("talk about linearity within <region>", inline: true)
-
-== Method for simulating lead field using the forward model
-
-// talk about one specific gaze direction.
-// In our many-dipoles approach, 
-We first introduce the concept of a gaze direction vector. The "gaze direction vector" for an eye is a vector in the same coordinate system as the head model, having unit length and pointing from the center of the eye in the direction of the object that the subject is looking at. We assume a symmetric eyeball around the axis described by the gaze direction, and thus this gaze direction vector will always pass through the center of the cornea. When the viewed object is sufficiently far away from the subject, we can assume that the gaze directions of both eyes are parallel to each other. Thus the individual gaze directions can be described by a single vector parallel to both of these. The location of this common gaze direction vector is not important as it only describes a direction. 
-
-We then calculate the EEG topography resulting from both eyes looking in this direction. 
-
-For the CRD method, we do this by using a single source point placed at the center of the eyeball with an orientation parallel to the gaze direction. The leadfield for this single point gives the scalp topography for that eye, and for the overall scalp topography we add the leadfields of both of the eye center dipoles.
-
-For the ensemble method, we make use of the set of HArtMuT head model source points with retina and cornea labels. Each source point has a fixed position provided in the head model, and we calculate an orientation vector pointing outwards in the direction from the center of the respective eyeball to the source point. 
-
 The intrinsic eye gaze direction in the model is taken as the average of the cornea-point orientations of that eye, and we can define the angular extent '\u{03B8}' of the cornea to be the maximum value of the angle difference between the individual cornea orientations and this gaze direction; that is, the angle difference of the "cornea"-labelled point that is farthest from the intrinsic gaze direction.
 
-#todo("diagram - eye gaze coordinate system (wrt front gaze=0) and corresponding cornea angle. Cornea & retina colored.", inline: true)
-
-Although the eyeball rotates when the subject changes their gaze direction, the cornea does not move relative to the gaze direction, i.e. the relationship between the cornea point orientations and the current gaze direction vector remains the same at all times. Thus, for any given gaze direction, we can find the angle between the gaze vector and the calculated orientation vector at each source point. If this angle is less than the maximum cornea angle '\u{03B8}', we can label that point as "retina" type, and if not, we label it as "retina" type.
-
-// #figure(
-//   image("/src/graphics/fig ret cor theta comparison.png", width: 50%),
-//   caption: [Comparison between retina and cornea source orientations, gaze direction, and maximum cornea angle.],
-// ) <charges_representation>
+Biologically, when the eyeball rotates as the subject changes their gaze direction, the cornea does not move relative to the gaze direction, i.e. the relationship between the cornea points and the current gaze direction remains the same at all times. Thus, in our model, for any given gaze direction, we can find and check the angle between the gaze vector and the calculated orientation vector at each source location. If this angle is less than the maximum cornea angle '\u{03B8}', we can relabel that point as "cornea" type, and if not, we relabel it as "retina" type.
 
 #figure(
   image("../src/graphics/fig ret cor source dipoles.png", width: 100%),
-  caption: [Change in spatial distribution of retina and cornea source dipoles during an eye movement (top-down view, cross-section)],
+  caption: [Spatial distribution of retina and cornea source dipoles during an eye movement (top-down view, cross-section)],
 ) <retina_cornea_source_dipoles>
 
-We further give each source point a weight (+1 or -1, i.e. a sign) to represent the orientation of the actual source dipole relative to the orientation vector. As originally calculated, the orientation vector when placed at the source point will represent a dipole pointing outwards, and giving a source point a negative weight value represents a dipole pointing inwards. Thus, the cornea and retina dipoles are given weights of +1 and -1 respectively. The scalp topography for a particular gaze vector is then calculated by multiplying the lead field of each source point by the source orientations and the weightage. 
+To avoid recalculating orientations for each gaze direction vector, we only calculate orientations once at the start of the simulation, oriented away and outwards from the center of the eyeball. For each gaze direction vector, we first calculate the updated label of each source location, then assign each of them a weight (+1 or -1, i.e. a sign) to represent the orientation of the actual source dipole relative to the calculated orientation vector. Cornea and retina points are given weights of +1 and -1 respectively. The scalp topography for a particular gaze vector is then calculated by multiplying the lead field of each source point by the corresponding source orientations and weights, and then summing these individual scalp potentials. 
 
-This process can be summed up in the following set of steps:
-- Import forward model
-- Select eye sources retina,cornea (ensemble) or centre (CRD)
-- Set gaze direction vector
-- CRD method: 
-  - Calculate orientations = gazedir
-- Ensemble method:  
-  - Calculate orientations away from centre
-  - Calculate "resting" gaze direction vector and max. cornea angle 
-  - Classify retina/cornea points based on gazedir and cor_angle; assign weights
-- Calculate scalp potentials - multiply the leadfields and (weighted) orientations for the selected sources, then sum.
-#todo("Flowchart/block diagram?", inline: true)
+== Simulation of eye movement from gaze direction A to B
 
-Finally, for both models, the EEG effect of an eye movement from a gaze direction A to a gaze direction B can be calculated by simulating the scalp topography for both and then taking the difference (B-A). 
+The following set of steps are required in order to simulate the eye movement in the form of a difference topography:
 
-// A sample simulation of a left-to-right horizontal movement from -15° to +15° (relative to a central fixation point and in the same horizontal/vertical line respectively) is shown below. 
-// ((todo: add a vertical movement from --- to ---)) 
-
-
-== Assumptions and  simplifications
-
-Certain assumptions have been made while developing this model. Firstly, we have assumed each eye to be perfectly spherical, although in reality the cornea surface bulges out slightly at the front, and the eyes may be slightly deformed in other directions as well (e.g. due to a medical condition #todo("ref. diseased eye shape mri study", inline: true)). Next, we assume that the cornea tissue is symmetrically distributed around the axis pointing from the center of the eye outwards towards the direction of gaze, and thus can be considered to lie on the part of the eye surface that falls within a conical region extending from the eye center in the direction of gaze. We also assume that during an eye movement, the eye only rotates about its center and is not translated (although some studies like #pc[@moon_positional_2020] show otherwise). Further, some sources indicate that the magnitude of the potentials in the eye changes over time, in particular due to illumination.
-#todo("ref - see @plochl_combining_2012 pg. 17", inline: true). 
-This is not accounted for in our current model.
-
-The current version of the HArtMuT model considers the eyes as part of the skin rather than as a separate tissue type with its own conductivity. This also results effectively in a "closed eyelid" state. Various sources 
-#todo("ref", inline: true) 
-have described the effect of a closing eyelid as modulating the electric potentials of the cornea ("sliding electrode" effect) 
-#todo("ref - see @plochl_combining_2012 for listed sources", inline: true)
-, and future simulations with our model could take this into account to remove the "closed eyelid" effect. 
-
-// == Two kinds of simulations: CRD method, many-dipoles method 
-#todo("rename many-dipoles to ensemble", inline: true) 
-
-// // describe how we used the prev simulation approach for each of these models.
-
+#set enum(numbering: "1.a.")
++ Load forward model
++ Select appropriate eye source points by label: retina and cornea (for ensemble method) or eye centers (CRD method)
++ Set gaze direction vector
++ For the *corneo-retinal dipole method*: set source orientations = gaze direction vector
+  
+  For the *ensemble method*:  
+  + Calculate orientations away from centre
+  + Calculate "resting" gaze direction vector and max. cornea angle 
+  + Classify retina/cornea points based on gazedir and cor_angle; assign weights
+  
++ Calculate scalp potentials: multiply the leadfields and (weighted if ensemble method) orientations for the selected sources, then sum.
++ Difference topography: Simulate the scalp topography (steps 4-5) for gaze direction A, then repeat the same steps for gaze direction B. Finally, calculate the difference (B-A). 
 
 
 
 
 = Results
 
-We carried out two kinds of simulations: First, using our model of multiple retinal and corneal source dipoles; and second, simulating the corneo-retinal dipole as a single dipole at the center of each eye (resultant dipole method). 
+We chose one test eye movement from the center fixation point to a point 15° to the left (for horizontal movement) and one from the center fixation point to a point 15° upwards (for vertical movement). We simulated these two test movements using the ensemble method as well as the corneo-retinal dipole method. 
 
-We chose to simulate an eye movement from the center fixation point to a point 15° to the left (for horizontal movement) and from the center fixation point to a point 15° upwards (for vertical movement).
+The topographies thus obtained are shown in the figures below. Each topo-plot figure contains the scalp topography plots at the movement start point (A), movement end point (B), and the difference (B-A). The last plot is the difference plot shown once again, with the projected electrode positions displayed on the head in order to give a better idea of the deflection at individual electrodes. The plots are generated using UnfoldMakie.jl @Mikheev2025.
 
-== Horizontal Saccade
-
-The topographies obtained via each of these methods are shown in the figure below. The topography for a similar movement from a real dataset is also shown alongside the simulations. 
+== Ensemble method difference topography
 
 #figure(
-  image("../src/graphics/fig 2 methods topo l-r.png", width: 70%),
-  caption: [Difference topographies resulting from simulation of the ensemble model and the CRD model],
-) <simulation_horiz_topo>
+  image("../src/graphics/results/result_ensemble_horiz.svg", width: 70%),
+  caption: [Ensemble method horizontal movement topo plots],
+) 
 
 #figure(
-  image("/src/graphics/fig em l-r real one.png", width: 35%),
-  caption: [Leftward eye movement topography from real data],
-) <realdata_horiz_topo>
+  image("../src/graphics/results/result_ensemble_vert.svg", width: 70%),
+  caption: [Ensemble method vertical movement topo plots],
+) 
 
 
-#todo("add figures from plöchl paper for comparison", inline: true)
-#todo("real data topo - generate a png in matlab rather than taking a screenshot. Add heading etc", inline: true)
+== CRD method difference topography
 
-== Vertical Saccade
 
+#figure(
+  image("../src/graphics/results/result_crd_horiz.svg", width: 70%),
+  caption: [CRD method horizontal movement topo plots],
+) 
+
+#figure(
+  image("../src/graphics/results/result_crd_vert.svg", width: 70%),
+  caption: [CRD method vertical movement topo plots],
+) 
+
+
+== Description of results
+
+For the center gaze position, both methods show a positive potential measured at the front of the head, where the electrodes are located closer to the eyes, and a negative potential towards the back of the head.  
+
+In the horizontal movement simulation, the scalp topography is still positive at the front and negative at the back, but the area of positive measured potential is shifted to the left compared to the center gaze. The difference plot shows the change more clearly - the electrodes on the left of the face show a positive value in the difference plot, indicating they experienced an upward deflection, while those on the right show the opposite. 
+
+In the vertical movement simulation, the shift in positive potential is not as easily apparent from simple inspection as in the horizontal simulation. The difference plot however shows that the EEG scalp electrodes all see a positive deflection, with those near the eyes having the highest degree of change.
+
+In both simulation methods, the scale of the difference plot is smaller than that of the corresponding individual gaze direction topographies. For the given size of eye movement (15°), the difference magnitudes for both methods are in the range of approximately one-tenth of the respective gaze direction topographies. 
+
+There is also a large difference in the difference plot scales of the two methods. 
 
 
 = Discussion
 
-== Evaluation
+== Qualitative Evaluation
 
-For the scope of this project, we have only a qualitative evaluation of the simulation results. This is for a few different reasons. First, the lead field provided in the forward model contains scaled values, and thus does not directly correspond to actual voltages measured on the scalp. Next, the CRD simulation uses only two source points whereas the ensemble method uses several hundred sources. After summing the lead fields from these, the simulated data is thus of a different order of magnitude than that of the CRD model. 
+When the subject in an EEG recording changes their gaze direction, the eyeball rotates in its socket and the charged tissues accordingly move in space. This change in the spatial distribution causes a change in the resultant electric potential measured at each of the scalp electrodes, and this change is visible in the EEG recordings as an eye movement artefact @mowrer_corneo-retinal_1935. 
 
-Further, although we have assumed a simplified scenario with both eyes looking in the same direction (implying a stimulus located far away from the subject), the stimuli in EEG studies are often presented on a screen in front of the subject, which means that the eye gaze directions are not perfectly parallel.
+For a movement going from center gaze (looking straight ahead) towards a gaze looking to the left, we would expect the electrodes on the left to measure a more positive potential after the movement than before the eye movement (center gaze). Similarly, for an upward eye movement we expect the electrodes above the eyes to measure more positive after the movement than they were at center gaze.
 
-Finally, there are certain limitations arising from the forward model used, which mean that the model is not yet as accurate as possible to reality and so the actual values yielded by the simulation are not directly comparable with the values from real data.   #todo("expand on this section", inline: true)
+=== Why qualitative evaluation?
+For this project, we have only a qualitative evaluation of the simulation results. This is for a few different reasons. First, the lead field provided in the forward model contains scaled values, and does not give us actual voltages measured on the scalp. Thus, a suitable scaling factor would have to be found to bring the calculated lead field values up to the level of realistic scalp voltages. 
 
-Due to the above reasons, it is not possible to directly quantitatively compare the simulated values with real data without some further processing. For the proof-of-concept presented in this project, we used topoplots for a qualitative evaluation. 
+Next, the CRD simulation uses only two source points whereas the ensemble method uses several hundred sources. After summing the lead fields from these, the simulated data using the ensemble method is thus of a different order of magnitude than that simulated using the CRD model and these two are not directly comparable. 
 
-== Limitations 
+For comparison with real data, we also searched the data recorded in a combined EEG-Eye Tracking study @gert_span_2022 in order to find saccades of similar end points and size. However, a direct comparison of our simulation with real data saccades was difficult as there were few comparable purely horizontal or vertical saccades to be found in the dataset.
 
-In the current published HArtMuT model, the eyes are not considered as their own tissue type with their own conductivity in the head model, and the cornea source points are more densely spaced than the retina source points, causing a bias towards the points located at the front of the eye. Further, the eye shape described by the eye source points in the model is rather flattened - this is possibly due to deformation that takes place during the warping to the NYHead model 
-#todo("check exact wording of this", inline: true)
-. These limitations also carry over to our simulations.
-However, during our discussions with Nils Harmening, we obtained a new eye model with source points more evenly spaced along a spherical surface, and another model calculated considering the conductivities of the eye tissues themselves instead of modelling them as skin as was done in the published model. In future, the simulation process we have described here could be carried out using these updated models. 
-#todo("update this if using the spherical/water model", inline: true)
+Further, it is not possible to directly quantitatively compare the simulated values with real data without some further processing. The model is not yet as accurate as possible to reality (see @limitations). Although we have assumed a simplified scenario with both eyes looking in parallel directions (implying a stimulus located very far away from the subject), the stimuli in EEG studies are often presented on a screen in front of the subject, which means that the eye gaze directions are not perfectly parallel in a real study. To obtain simulation data corresponding to this condition, we would need to extend the simulation to allow setting different gaze direction vectors for each eye.
 
+Hence, for the purpose of this project, we performed a simple qualitative evaluation by plotting the difference topographies and looking at the general trends at individual electrodes over a range of angles. Possible further work could be to adapt the model to give values in a comparable range to real data and then evaluate the characteristics relative to real data.
 
-Another limitation is that we are not considering the effects due to eyelid closure or movement. #todo("check sentence structure etc", inline: true) We are not simulating either of these effects at this stage. In fact, the forward model considers the eyes to have the same conductivity as skin, i.e. it simulates the state as if the eyelid is closed during the eye movement and the eye is covered by the eyelid. Since the eyelid closure is thought to modify the strength of the corneo-retinal dipole, the simulation for an open eyelid state will have to be done in a different manner where eyeballs have their own conductivity instead of being considered part of the skin. 
+=== Difference Topo-plots
+Observing the difference topographies, we can see that the difference plots from simulations via both, the ensemble method as well as the corneo-retinal dipole method match the expectation laid out above. 
 
-For the eye movement itself, we have only considered the scalp potentials at the start and at the end of the movement, rather than simulating the trajectories complete with intermediate points. We also considered purely horizontal and purely vertical movements, which is relatively uncommon in real data. 
+As noted earlier, the leadfield magnitude ranges from the two methods are very different. A possible explanation of this is that the ensemble simulation is a sum of several hundred lead fields whereas the CRD simulation involves only two leadfields. 
 
-The magnitude of the simulated scalp potentials also represents a scaled version of the actual scalp potentials measured in EEG, since the forward model itself has scaling built-in. #todo("fix weird wording", inline: true) Thus, to simulate values in a realistic range, some further calculations must be done in order to unify the scale of the simulated potentials and the values recorded in real data. 
+=== Examining individual electrodes
+We can also simulate the leadfields for a range of gaze angles and plot the individual electrode potential as the gaze direction varies. For this, we selected a subset of electrodes: some close to the eye (Fp, AF7/AF8, FFT9h/FFT10h, Nz; expected to show the largest effect from eye movements) as well as an electrode farther away (CPz - at the top of the head, expected to have only a slight change). The simulated gaze directions went from -40 to +40 degrees in the respective direction (horizontal or vertical).
 
-In addition, we have assumed equal magnitudes for both cornea and retina dipoles, but it is possible that the magnitudes of the potential difference in the actual tissue are not equal, and this could in turn be reflected in the weights given to the source points when their labels are updated. 
+#figure(
+  image("../src/graphics/results/results_traj_ensemble_horiz.svg", width: 70%),
+  caption: [Ensemble method horizontal movement, specific electrode potentials],
+) 
 
-Further investigation into the magnitudes of the cornea and retina potentials is therefore required. #todo("include details on this difference of opinion only once: either here or in the beginning when describing the origin of CRD", inline: true) There is in fact some difference of opinion on the charge of the retina @lins_ocular_1993 and whether or not it contributes to the corneo-retinal dipole: #pc[@berg_dipole_1991] and #pc[@plochl_combining_2012] do not mention the role of the cornea at all when talking about the CRD. However, for our simulations we have chosen to include the model of the cornea with its dipoles pointing outwards, as assumed in the design of the HArtMuT model @harmening_hartmutmodeling_2022. 
-#todo("resolve repeated info about cornea difference of opinion", inline: true)
+#figure(
+  image("../src/graphics/results/results_traj_ensemble_vert.svg", width: 70%),
+  caption: [Ensemble method vertical movement, specific electrode potentials],
+) 
 
-Finally, during an eye movement, the muscles around the eyes contract or relax as required in order to rotate the eyeball in its socket. The muscle contractions are controlled by means of electrical currents running through the muscle fibers. Thus the scalp potentials due to an eye movement consist not only of the potentials resulting from the change in eye charge distribution, but also those resulting from the muscle activations. However, we have not simulated the potentials resulting from electrical activations in the muscles themselves, although that is a possible task for future work in extending this project. 
-// bene feedback: deformation of eyes in hartmut model is mostly a modelling failure rather than depicting reality - could come from the warping process - see Nils email discussion. 
+#figure(
+  image("../src/graphics/results/results_traj_crd_horiz.svg", width: 70%),
+  caption: [CRD method horizontal movement, specific electrode potentials],
+) 
+
+#figure(
+  image("../src/graphics/results/results_traj_crd_vert.svg", width: 70%),
+  caption: [CRD method vertical movement, specific electrode potentials],
+) 
+
+In general, we see that the potentials at the individual eye-adjacent electrodes and the nose electrode go up as the positively charged cornea comes closer to them and go down as the CRD begins to point away from them again. 
+
+== Limitations <limitations>
+
+In the current published HArtMuT head model, the eyes are not considered as their own tissue type with their own conductivity, and the cornea source points are more densely spaced than the retina source points, causing a bias towards the points located at the front of the eye. Further, the eye shape described by the eye source points in the model is rather flattened - this is possibly due to deformation that takes place during the mapping step in the generation of the HArtMuT model. These limitations also carry over to our simulations.
+
+Some of these limitations have been overcome: we collaborated with Nils Harmening to obtained a new eye model with source points more evenly spaced along a spherical surface. We have also discussed a further update to the model where the eyes have their own conductivity.
+
+Another limitation is that we are not considering the effects due to eyelid closure or movement. In fact, the forward model considers the eyes to have the same conductivity as skin, i.e. the effect is as if the eyelid is closed during the eye movement and the eye is covered by the eyelid. Since the eyelid closure is understood to modify the strength of the corneo-retinal dipole, the ensemble method simulation for an open eyelid state will likely require different weights for the relative strength of the corneal and retinal potentials, and in the corneo-retinal dipole method dipole strength will have to be modified based on the degree of eye closure. The relative degree of contribution of retinal and corneal potentials is also unclear, and more investigation is needed to understand the exact manner in which the weights need to be distributed.
+
+For the simulations and their evaluation, we only considered the scalp potentials at the start and at the end of the movement, rather than simulating the trajectories complete with intermediate points. The simulated data from the two methods and the data from real participants have different scales, since the forward model itself does not directly output scalp potentials in volts. We also considered purely horizontal and purely vertical movements, which is relatively uncommon in real data. 
+
+Finally, during an eye movement, the muscles around the eyes contract or relax as required in order to rotate the eyeball in its socket. The muscle contractions are controlled by means of electrical currents running through the muscle fibers. Thus the scalp potentials due to an eye movement should consist not only of the potentials resulting from the change in eye charge distribution, but also those resulting from the muscle activations. However, we have not simulated the potentials resulting from electrical activations in the muscles themselves, although that is a possible task for future work in extending this project. 
 
 == Outlook 
 
@@ -288,28 +340,18 @@ There are several possible opportunities to build further on this model. The for
 
 Since our model can be extended to specify an independent gaze direction for individual eyes, we can also in future simulate a vergence movement, i.e., a movement where both eyes are looking at an object closer to the face and the individual eye gaze directions are non-parallel.
 
-Once the basic model has been updated and tested for small eye movements in different directions, eye movements of larger magnitude can also be simulated, since most studies on eye movement artefacts focus on smaller saccades in the range of angles where the HEOG has a linear relationship to the angle of the saccade @plochl_combining_2012.
-#todo("ref", inline: true) ). 
-The model can be adapted to account for eyelid effects, including their role during eye movements as well as the generation of blink artefacts, and to account for potentials generated due to muscle activation. Finally, the artefact simulation code can be converted into a software package that provides easy access to these simulation methods. Such a package could be integrated into a software toolbox like UnfoldToolbox.jl, either as part of an existing simulation package like UnfoldSim @Schepers2025, or in the form of a separate package.
+Once the basic model has been updated and tested for small eye movements in different directions, eye movements of larger magnitude can also be simulated, since most studies on eye movement artefacts focus on smaller saccades in the range of angles where the HEOG has a linear relationship to the angle of the saccade @plochl_combining_2012. 
+The model can be adapted to account for eyelid effects, including their role during eye movements as well as the generation of blink artefacts, and to account for potentials generated due to muscle activation. Finally, the artefact simulation code can be converted into a software package that provides easy access to these simulation methods, or could be integrated into an existing simulation package like UnfoldSim @Schepers2025.
 
-#todo("citation for unfoldtoolbox.jl", inline: true)
-
-// do we mention B&S at all?? 
-
-// different tissue type for eyes; rounder eyes; 
-
-// simulating trajectories to get a better idea of the actual EEG data simulated and better compare with real data. Can see it in time-series and/or ICA and see if it has characteristics similar to real EM, e.g. ICA component.
 
 = Summary
 
-The measured EEG potentials resulting from eye movements are caused due to the fact that the retina and cornea tissues of the eye are electrically charged, forming what is called in literature the "corneo-retinal dipole".
-#todo("see whether to also briefly mention other components like eyelid & muscles", inline: true) 
+The retina and cornea tissues of the eye are electrically charged, forming what is called the "corneo-retinal potential" which can be represented as an electrical dipole with its positive end towards the cornea and negative end towards the retina. This dipole moves in space during an eye movement and causes changes in measured potentials at EEG electrodes, and these changes contribute unwanted potentials or "artefacts" in the recorded EEG.
 
-In this project, we presented the "ensemble" model of the human eye, represented by a set of electrical current dipoles ("source dipoles") placed at various locations on the surface of the eye. To simulate the scalp topography for any given gaze direction of the eye, we implemented two methods: the "ensemble" method, and the "corneo-retinal dipole" method (using just one source dipole per eye placed in the eye center). 
+In this project, we presented the "ensemble" model of the human eye, represented by a set of electrical current dipoles ("source dipoles") placed at various locations on the surface of the eye, and the "corneo-retinal dipole" model (consisting of just one source dipole per eye placed at the eye centers).
 
-Next, as a proof of concept, we simulated the scalp potentials ("lead fields") at the start and at the end of an eye movement. After calculating the difference between these two lead fields, as a qualitative check we plotted the scalp topography of this difference in order to compare the two methods. The eye movements considered were a pure horizontal and a pure vertical eye movement, defined by the start and end position of the eye.
+Next, we simulated the scalp potentials ("lead fields") at the start and at the end of an eye movement. The eye movements considered were a pure horizontal and a pure vertical eye movement, defined by the start and end direction of eye gaze. We qualitatively evaluated the simulation for each of these two methods, by calculating the difference between the lead fields at the start and end of the movement, and plotting the scalp topography of this difference.
 
-Finally, we discussed some limitations of the approach described, give an outlook on further directions to work on, and suggest eventually creating a software package to allow researchers to simulate eye artefacts according to their required specifications.
-#todo("expand on points in this paragraph", inline: true) 
+The difference topographies of the two methods agreed with the expectation that we had that the electrodes nearest the new position of the cornea would have a positive deflection and those nearest the new position of the retina would have a negative deflection. In addition, we simulated the difference potentials for different end gaze angles, and their trends at a few electrodes of interest near the eye also agreed with our prediction.
 
-#todo("Convert all citations to 'prose' where necessary", inline: true)
+The model can be improved in the future by including more realistic conductivities for the eye tissues, by assigning different gaze directions to individual eyes, and by testing different relative magnitudes for cornea and retina potentials. The simulation output can be scaled to be comparable to real data, and an exact trajectory from real data can be simulated with the model and the two can be compared.

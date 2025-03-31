@@ -7,8 +7,8 @@
 #show: thesis.with(
   lang: "en",
   title: (en: "Simulation of
-eye movement artefacts in EEG"),
-  subtitle: (en:"using the Ensemble and
+Eye Movement Artefacts in EEG"),
+  subtitle: (en:"introducing the Ensemble and
 Corneo-Retinal Dipole methods"),
   thesis-type: (en: "Research Project"),
   academic-title: (en: "Master of Science"),
@@ -44,7 +44,7 @@ Corneo-Retinal Dipole methods"),
 #outline()
 #show outline: set heading(outlined: true)
 #outline(title: [List of Figures], target: figure.where(kind: image))
-// #outline(title: [List of Tables], target: figure.where(kind: table))
+#outline(title: [List of Tables], target: figure.where(kind: table))
 #abbr.config(space-char: sym.space.nobreak)
 #abbr.list()
 #show: main-matter-styles
