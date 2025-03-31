@@ -21,6 +21,7 @@ begin
 	#topoplots
 	using UnfoldMakie
 	using TopoPlots
+	using CairoMakie #for saving plots
 end
 
 # ╔═╡ 5e6b5bca-bd66-4325-8744-1afe2e83a04f
@@ -65,32 +66,32 @@ begin
 				,"left" # for intermediate eyemodel; there are only eye points and no symmetric (leftright) sources
 				,"right" # ditto here
 			]
-	# TODO: add label search term for complete L/R eye (instead of separate retina/cornea) and one for all L&R/retina&cornea points
-	# TODO: add label to select only one set of cornea sources: horizontal or vertical oriented
+	"set the list of labels for which we will pre-find indices"
 end
 
 # ╔═╡ fa7aaded-fcd1-4049-a611-462115614910
 begin
-	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_hull_mesh8_2025-03-01.mat")
-	# eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_sphere_mesh8_2025-03-01.mat")
-	# eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_new_2025-02-10.mat")
+	# eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_hull_mesh8_2025-03-01.mat")
+	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_sphere_mesh8_2025-03-01.mat")
 	remove_indices = [164, 165, 166, 167] # since eyemodel structure doesn't exactly correspond to the main hartmut mat structure expected by the read_new_hartmut function, just get the indices of the electrodes that it drops & drop the same indices from eyemodel directly 
 	eyemodel["leadfield"] = eyemodel["leadfield"][Not(remove_indices), :, :]
 	@info size(eyemodel["pos"])
-	""
+	"load eyemodel and remove electrodes like in read_new_hartmut"
 end
 
 # ╔═╡ 3756412a-0715-4ae4-9e32-f46978e60a38
 begin
-	# import small headmodel temporarily for electrode positions, since eyemodel does not include them
+	# import small headmodel for electrode positions, since eyemodel does not include them
 	hart_small = UnfoldSim.headmodel()
 	pos3d = hart_small.electrodes["pos"]
-	""
+	electrode_pos = pos2dfrom3d(pos3d)
+	"get electrode positions from small headmodel"
 end
 
 # ╔═╡ fe8025c9-3f52-401f-bbdb-60d0dffafd2a
 begin
-	lsi_eyemodel = hart_indices_from_labels(eyemodel,labels) 
+	# find indices for specific source labels
+	lsi_eyemodel = hart_indices_from_labels(eyemodel,labels)
 	# sanity check for the earlier eyemodels: retina and cornea should have similar number of points. in the full headmodel there are two sets of points for the cornea (horizontal/vertical orientations), but in the intermediate eyemodels there are just the source points so no duplication.
 	# after new eyemodel with more uniform distribution: cornea should have fewer points than retina.
 end
@@ -116,7 +117,7 @@ begin
 	eye_center_L = Statistics.mean(em_positions_L,dims=1)
 	eye_center_R = Statistics.mean(em_positions_R,dims=1)
 	
-	# find center - directly using the values from ALL eyepoints (not just cornea&retina) in the model 2025-02-10 to avoid problems if future models do not include within-eye points anymore. the code for calculating these is however still available.
+	# find center - directly using the values from ALL eyepoints (not just cornea&retina) in the model 2025-02-10 to avoid problems if future models do not include within-eye points anymore. the code for calculating these is however still available below.
 	eyeall_center_L = [ -30.972  56.9449  -37.1539];
 	eyeall_center_R = [31.986  56.5737  -37.1178];
 	
@@ -163,7 +164,7 @@ end
 # ╔═╡ e038aaea-2764-4646-943c-69dffdf2b5ba
 begin
 	# plot eyemodel sources with calculated orientations; centroids; approx. gaze direction. plot average gazedirection from the model between the corneas, plot parameter 'gazedirection_test' at the origin.
-	
+	# "dandelion plot": if source orientations and gaze direction arrows are all plotted 
 	fig_eyemodel_orientations = WGLMakie.scatter([0 0 0], alpha=0.025, color="grey")
 	
 	point3fs_o = [Point3f(p...) for p in eachrow(
@@ -188,28 +189,15 @@ begin
 	)]
 	arrows!(point3fs_o, vectors_o.*6, arrowsize=Vec3f(2, 2, 0.6))
 
-	# plot movement-equivalent dipoles
-	# p_o = [Point3f(p...) for p in eachrow(
-	# 	[
-	# 		equiv_dipole_pos;
-	# 	]
-	# )]
-	# v_o = [Vec3f(o...) for o in eachrow(
-	# 	[
-	# 		equiv_dipole_ori.*3;
-	# 		# hcat(equiv_dipole_ori...)'.*10 # this worked with the old thing
-	# 	]
-	# )]
-	# arrows!(p_o, v_o.*15, arrowsize=Vec3f(2, 2, 0.6); color="red")
-
 	# for report plot
-	WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Cornea"],:])
-	WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Retina"],:])
+	# WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Cornea"],:])
+	# WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Retina"],:])	
 	
-	# WGLMakie.scatter!(eyemodel["pos"][em_sim_idx,:])
+	WGLMakie.scatter!(eyemodel["pos"][em_sim_idx,:])
+	# # plot cornea centers
 	# WGLMakie.scatter!(cornea_center_R)
 	# WGLMakie.scatter!(cornea_center_L)
-	# red points - centroid considering ALL eye sources
+	# # red points - centroid considering ALL eye sources
 	# WGLMakie.scatter!(eyeall_center_L,color="red")
 	# WGLMakie.scatter!(eyeall_center_R,color="red")
 	# # pink points - centroid using just retina&cornea sources
@@ -220,20 +208,16 @@ begin
 	# WGLMakie.scatter!(Point3f(equiv_dipole_pos[1,:]),color="purple";markersize=25)
 	# WGLMakie.scatter!(Point3f(equiv_dipole_pos[2,:]),color="purple";markersize=25)
 
-	@info gazedir_R, gazedir_L
-	
-	# WGLMakie.scatter!(,color="red")
-	# WGLMakie.scatter!(,color="red")
 	fig_eyemodel_orientations
 end
 
 # ╔═╡ c25aa461-d1f5-44f6-8ee7-0289be17098c
 begin
-	# directly simulate leadfield for original position in the model
+	# directly simulate leadfield for original (intrinsic) position in the model
 	mag_eyemodel = magnitude(eyemodel["leadfield"],eyemodel["orientation"])
 	mag_eyemodel_retina = sum(mag_eyemodel[:,ii] for ii in lsi_eyemodel["Retina"])
 	mag_eyemodel_cornea = sum(mag_eyemodel[:,ii] for ii in lsi_eyemodel["Cornea"])
-	weights = [1 -1] # if orientations match biological model, make both weights positive since retina & cornea source orientations are already calculated opposite to each other. Else, cornea minus retina
+	weights = [1 -1] # if orientations match biological model, make both weights positive since retina & cornea source orientations are already calculated opposite to each other. Else, cornea minus retina means negative weight for retina
 	weighted_difference_LF = mag_eyemodel_cornea.*weights[1] + mag_eyemodel_retina.*weights[2]  
 end
 
@@ -243,7 +227,6 @@ begin
 		# just x,y plane for now. gaze angle measured from front neutral gaze, not from x-axis
 		return [sind(angle_deg) cosd(angle_deg) 0]
 	end
-	@info "gazevec_from_angle: eg. +/- 35deg", gazevec_from_angle(35), gazevec_from_angle(-35)
 
 	function gv_angle_3d(angle_H, angle_V)
 		# angles measured from center gaze position - use complementary angle for θ 
@@ -257,7 +240,7 @@ begin
 		return eyeweights
 	end
 	function is_corneapoint(orientation, gazedir, max_cornea_angle_deg)
-		if(angle(orientation,gazedir)<=max_cornea_angle_deg)
+		if(angle_between(orientation,gazedir)<=max_cornea_angle_deg)
 			return 1
 		else 
 			return -1
@@ -277,10 +260,6 @@ begin
 		mag_model = magnitude(model["leadfield"],model["orientation"])
 		source_weights = zeros(size(model["pos"])[1]) # all sources other than those defined by sim_idx will be set to zero magnitude 
 		source_weights[sim_idx] .= mapslices(x -> is_corneapoint(x,gazedir,max_cornea_angle_deg), model["orientation"][sim_idx,:],dims=2)
-
-		# or, indirectly, 
-		# weights = weights_from_gazedir(model, sim_idx, gazedir, 54.0384)
-		
 		weighted_sum = sum(mag_model[:,idx].* source_weights[idx] for idx in sim_idx,dims=2)
 		return weighted_sum
 	end
@@ -292,15 +271,6 @@ begin
 	sim_leadfield_test = sum(mag_eyemodel[:,idx].* eyeweights_test[idx] for idx in em_sim_idx,dims=2)
 end
 
-# ╔═╡ 08a4b6a5-db09-4957-aa7e-70946109c521
-begin
-	# sanity check: difference between leadfield calculated using weights_from_gazedir (with [0 1 0]) and simply-calculated headmodel leadfield from gazedirection_test
-	# there is some difference - why? perhaps because the headmodel does not have eyes oriented straight ahead? 
-	# difference_mag = sim_leadfield_test - weighted_difference_LF
-	
-	# topoplot_leadfields_difference(weighted_difference_LF,sim_leadfield_test,pos2dfrom3d(pos3d))
-end
-
 # ╔═╡ e29d815a-9b9b-481b-abe7-865222f961d8
 begin
 	# make sure that leadfield_from_gazedir gives the same output as the individual steps 
@@ -309,8 +279,6 @@ begin
 	# 	leadfield_from_gazedir(eyemodel, em_sim_idx, gazedirection_test, 54.0384), sim_leadfield_test,
 	# 	pos2dfrom3d(pos3d))
 	# ""
-	unique(eyemodel["label"])
-	# eyemodel["label"]
 end
 
 # ╔═╡ 4ebe1996-7d27-4c38-90bb-a78466fbcf66
@@ -320,50 +288,18 @@ begin
 	f_inspect,ax,h = WGLMakie.scatter(eyemodel["pos"][em_sim_idx,:],color=colorparam[:]) 
 	# color=eyeweights[em_sim_idx]) to colour the points based on cornea/retina segmentation by gaze angle
 	# color = angles[:] to colour based on angle w.r.t. neutral gaze direction of original model
-	
 	Colorbar(f_inspect[1,2],h)
 	# f_inspect
 end
 
-# ╔═╡ d01ef98f-1fd7-41ec-b8f3-f7aa154e4c84
-begin
-	# L-R movement - 35deg left to 35deg right
-	@info "horizontal L-R -/+35deg"
-	# topoplot_leadfields_difference(
-	# 	leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-35), 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(35), 54.0384),
-	# 	pos2dfrom3d(pos3d), false
-	# )
-	
-end
-
-# ╔═╡ 6b67ee46-6c2c-401c-924c-3470631f11c7
-begin
-	# L-R movement - 35deg left to 0deg
-	# @info "horizontal L-R -35->0 deg"
-	# topoplot_leadfields_difference(
-	# 	leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-35), 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(0), 54.0384),
-	# 	pos2dfrom3d(pos3d), true
-	# )
-# 	@info "horizontal L-R -/+17deg"
-# 	topoplot_leadfields_difference(
-# 		leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-17), 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(17), 54.0384),
-# 		pos2dfrom3d(pos3d); commoncolorrange=false
-# 	)
-end
-
 # ╔═╡ 4de0ecc8-d272-4750-9d97-b69776c03115
 begin
-	# vertical movement
-	# @info "vertical movement: -35deg to +35deg "
-	# f_vertical = topoplot_leadfields_difference(
-	# 	leadfield_from_gazedir(eyemodel, em_sim_idx, gv_angle_3d(0, -35), 54.0384), leadfield_from_gazedir(eyemodel, em_sim_idx, gv_angle_3d(0, 35), 54.0384),
-	# 	pos2dfrom3d(pos3d); commoncolorrange=true
-	# )
 	@info "vertical movement: 0deg to +15deg "
 	f_vertical = topoplot_leadfields_difference(
 		leadfield_from_gazedir(eyemodel, em_sim_idx, gv_angle_3d(0, 0), 54.0384).*10e3, leadfield_from_gazedir(eyemodel, em_sim_idx, gv_angle_3d(0, 15), 54.0384).*10e3,
-		pos2dfrom3d(pos3d); labels = ["Ensemble - position A", "Ensemble - position B", "Ensemble - 15deg upwards","Difference plotted with electrodes"], commoncolorrange=false
+		pos2dfrom3d(pos3d); labels = ["Ensemble - position A", "Ensemble - position B", "Ensemble, 15° upwards","Difference plotted with electrodes"], commoncolorrange=false
 	)
+	# save("result_ensemble_vert.svg",f_vertical)
 end
 
 # ╔═╡ 852bdf41-ade3-49b5-9414-76a51358f81b
@@ -378,66 +314,42 @@ begin
 end
 
 # ╔═╡ 2bee1d29-9fe8-40cc-81f6-d895dcb220be
-# Improvements, further TODOs, other notes:
-
-# TODO: re-weighting both eyes according to number of points?
-# TODO: add proper titles for each of the plots
-# TODO: check how many retina points are being falsely categorised as cornea or vice versa based on just angle<max_cornea_angle
-# TODO: update topoplot_leadfields_difference - use common colorrange/colorbar
-# TODO: auto-pick cornea cutoff angle instead of using hardcoded value
-# TODO: update gazevec_from_angle to 3D version
+# Possible Improvements:
+# TODO: re-weighting both eyes according to number of points
+# TODO: auto-calculate max_cornea_angle
 # TODO: if model provides EyeCenter points, just choose them via label instead of computing centroid and using closest_srcs
-# TODO: add tests/checks that alert you if retina/cornea points are missing (and maybe some other tests too, sanity checks etc)
-
-# TODO: simulate individual eyes - can we just pass indices specific to a single eye? pass 2 individual gaze angles and internally simulate & add? how difficult is this - maybe do this later and add as 'outlook'/TODO for now
 
 # ╔═╡ c8375060-fb78-4343-842a-8b9ce8f4f90e
 begin
-	# Berg&Scherg equivalent difference dipoles for eyes: L,R respectively.
-
-	# From the paper: 
-	# horizontal dipoles - oriented approx. tangential to the surface of the head (=> orientation for L and R will not be the same. they had mean 33.2deg difference). +they were in the horizontal plane i.e. no z-component.
-	# fitted equivalent dipoles corresp. to a smaller change in angle than the change in the gazedir orientation. i.e. even when gaze changed through 15deg, DD described a change of less than that.
-	# from the prev. two points, we know we cannot directly take the vector difference of gazedirs to be the DD orientations.
-	# for 2-dipole model of horiz. movements, they constrained the locations to be symmetric
-	
-	# horiz. dipoles were in front of vertical.
-	
-	
-	# locations at the front-side of the eye:
-	# equiv_dipole_idx = [UnfoldSim.closest_src([-40, 80, -38], eyemodel["pos"]) ; UnfoldSim.closest_src([40, 80, -38], eyemodel["pos"])]
-
-	# locations near the center of the eye
+	# locations near the center of the eye, use for CRD simulation
 	equiv_dipole_idx = [UnfoldSim.closest_src(eyeall_center_L[1,:], eyemodel["pos"]);  UnfoldSim.closest_src(eyeall_center_R[1,:], eyemodel["pos"])]
-	
 	
 	equiv_dipole_pos = eyemodel["pos"][equiv_dipole_idx,:]
 	
-	# orientations guessed just by eyeballing the figures from the paper.
-	# or_R = Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(150), deg2rad(0)))) # right eye
-	# or_L = Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(210), deg2rad(0)))) # left eye
-	# or by measuring the angles in the figures.
-	or_L = Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(-152), deg2rad(0)))) # left eye
-	or_R = Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(165), deg2rad(0)))) # right eye
-	@info or_L, gv_angle_3d(90-208,0)
 	
-	equiv_dipole_ori = vcat(or_L', or_R')
+	# FOR FUTURE USE: testing equivalent/difference dipoles - Berg&Scherg method
+	# orientations guessed just by eyeballing the figures from the paper.
+	# or_L = Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(-152), deg2rad(0)))) # left eye
+	# or_R = Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(165), deg2rad(0)))) # right eye
+	# @info or_L, gv_angle_3d(90-208,0)
+	
+	# equiv_dipole_ori = vcat(or_L', or_R')
 
-	@info or_L, or_R, equiv_dipole_ori
-	@info "calculating B&S eqv dipole pos and orientations"
+	# @info or_L, or_R, equiv_dipole_ori
+	# @info "calculating Berg & Scherg equivalent dipole pos and orientations"
 end
 
 # ╔═╡ 521f140f-2322-438a-8a6a-e459dace3196
 begin
-	# for comparing with resultant dipole and Berg&scherg equivalent dipole, 0 to -15 deg
-	@info "Our method: horizontal C-L 0 to -10deg"
+	@info "Ensemble method: horizontal C-L 0 to -10deg"
 	LF_A = leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(0), 54.0384)
-	LF_B = leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-10), 54.0384)
-	topoplot_leadfields_difference(
+	LF_B = leadfield_from_gazedir(eyemodel, em_sim_idx, gazevec_from_angle(-15), 54.0384)
+	fig_ensemble_left = topoplot_leadfields_difference(
 		LF_A.*10e3, 
 		LF_B.*10e3,
-		pos2dfrom3d(pos3d); labels = ["Ensemble - position A", "Ensemble - position B", "Ensemble, 10deg Center-Left, with cornea","Difference plotted with electrodes"], commoncolorrange=false
+		pos2dfrom3d(pos3d); labels = ["Ensemble - position A", "Ensemble - position B", "Ensemble Difference plot, 15° leftwards","Difference plotted with electrodes"], commoncolorrange=false
 	)
+	# save("result_ensemble_horiz.svg",fig_ensemble_left)
 end
 
 # ╔═╡ 615a2bb0-f1ab-4469-8d2e-eb10e077de1d
@@ -449,75 +361,55 @@ begin
 		mag_eyemodel_equiv = magnitude(eyemodel["leadfield"],equiv_ori_model)
 		mag = sum(mag_eyemodel_equiv[:,ii] for ii in idx)
 	end
-	edm = equiv_dipole_mag(deepcopy(eyemodel),equiv_dipole_idx,equiv_dipole_ori)
-	@info maximum(edm), minimum(edm)
-	@info maximum(LF_B-LF_A), minimum(LF_B-LF_A)
 end
-
-# ╔═╡ 6ff30595-de0a-4f57-8d24-0c3c120f7f04
-	# topoplot_leadfields_difference(
-	# 	edm.*10e3, (LF_B-LF_A).*10e3,
-	# 	pos2dfrom3d(pos3d); commoncolorrange=false
-	# )
 
 # ╔═╡ 9c28c405-a62f-43ed-beba-38ebc08ceeec
 begin
-	# CRD 0 (front) to -15 (LHS)
-	crd_A_or = [0 1 0]
-	# crd_B_or = gazevec_from_angle(-15)
-
-	# CRD 0 (front) to +15y (up)
-	crd_B_or = gv_angle_3d(0, 15)'
+	# CRD 0 (front) to -15deg (horizontal or vertical: select orientation of B point accordingly)
+	crd_A_or = [0 1 0]	
+	# crd_B_or = gv_angle_3d(-15, 0)' #horizontal movement
+	crd_B_or = gv_angle_3d(0, 15)' #vertical movement
 	@info crd_A_or, crd_B_or
 	crd_A = equiv_dipole_mag(deepcopy(eyemodel),equiv_dipole_idx,[crd_A_or; crd_A_or])
 	crd_B = equiv_dipole_mag(deepcopy(eyemodel),equiv_dipole_idx,[crd_B_or; crd_B_or])
-	topoplot_leadfields_difference(
+	fig_crd = topoplot_leadfields_difference(
 		crd_A.*10e3, crd_B.*10e3,
-		pos2dfrom3d(pos3d); labels = ["CRD pos A", "CRD pos B", "CRD - Difference (B - A), with cornea","Difference plotted with electrodes"], commoncolorrange=false
+		pos2dfrom3d(pos3d); labels = ["CRD position A", "CRD position B", "CRD Difference, 15° upwards","Difference plotted with electrodes"], commoncolorrange=false
 	)
+	# save("result_crd.svg",fig_crd)
 end
 
 
-# ╔═╡ 23736080-0058-4289-a8d2-e85217d0c101
+# ╔═╡ 48d86efe-d2cb-4611-8126-3ad7cfd85df1
 begin
-	# # difference - CRD vs B&S equivalent dipoles
-	# topoplot_leadfields_difference(
-	# 	(crd_B - crd_A).*10e3, edm.*10e3,
-	# 	pos2dfrom3d(pos3d); commoncolorrange=false
-	# )
+	""" 
+	Simulate the resultant leadfield for the given trajectory (one or more gaze vectors), as the sum of leadfields from all sources at `sim_idx` in `model`.  
+	"""
+	# UNUSED function: planned for future work
+	function lf_for_trajectory(model, gaze_vectors; sim_idx = collect(1:size(model["leadfield"])[2]), max_cornea_angle_deg = 54.0384, weights = zeros(size(model["leadfield"])[2]))
+		# calculate magnitude of the model using the given orientations 
+		mag_model = magnitude(model["leadfield"],model["orientation"])
+		
+		# by default, all sources other than those defined by sim_idx will be set to zero magnitude 
+		lf = zeros(size(eyemodel["leadfield"])[1],size(gaze_vectors)[1]);
+		for ix in 1:size(gaze_vectors)[1]
+			weights[sim_idx] .= mapslices(x -> is_corneapoint(x,gaze_vectors[ix,:],max_cornea_angle_deg), model["orientation"][sim_idx,:],dims=2);
+			
+			lf[:,ix] = sum(mag_model[:,idx].* weights[idx] for idx in sim_idx,dims=2)
+		end
+		return lf
+	end
+
 end
 
-# ╔═╡ f2f265c0-75f0-4d6f-92b6-c21ac6420b39
-begin
-	f = Figure(size=(750, 700))
-	plot_topoplot!(
-		f[1,1], (LF_B-LF_A).*10e3, positions=pos2dfrom3d(pos3d), layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false))
-	plot_topoplot!(
-		f[1,2], (crd_B - crd_A).*10e3, positions=pos2dfrom3d(pos3d), layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
-    plot_topoplot!(
-		f[2,1], edm.*10e3, positions=pos2dfrom3d(pos3d), layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
-	plot_topoplot!(
-		f[2,2], edm.*10e3, positions=pos2dfrom3d(pos3d), layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = true),)
-	# ax1.title = "Our model"
-		# l1 = Label(f[0,1],"Our model")
-	Label(f[1,1][1, 1:2, Top()], "Ensemble model", valign = :bottom, font = :bold, padding = (0, 0, 5, 0))
-	Label(f[1,2][1, 1:2, Top()], "Corneo-retinal dipole", valign = :bottom, font = :bold, padding = (0, 0, 5, 0))
-	Label(f[2,1][1, 1:2, Top()], "B-S difference dipoles", valign = :bottom, font = :bold, padding = (0, 0, 5, 0))
-	Label(f[2,2][1, 1:2, Top()], "DD with electrodes", valign = :bottom, font = :bold, padding = (0, 0, 5, 0))
-	# l2 = Label(f[0,2],"Resultant dipole CRD")
-	# l3 = Label(f[3,1],"B-S difference dipoles")
-	# l4 = Label(f[3,2],"DD with electrodes")
-	# ax1.title = "Our model"
-	# @info ax1
-	# f
-	""
-end
-
+# ╔═╡ 8fb3fc94-f9c3-4fee-93f0-95f5f6b1bc0f
+size(eyemodel["leadfield"])
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 AngleBetweenVectors = "ec570357-d46e-52ed-9726-18773498274d"
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 CoordinateTransformations = "150eb455-5306-5404-9cee-2592286d6298"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
@@ -533,6 +425,7 @@ WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
 
 [compat]
 AngleBetweenVectors = "~0.3.0"
+CairoMakie = "~0.13.1"
 CoordinateTransformations = "~0.6.4"
 DataFrames = "~1.7.0"
 HDF5 = "~0.17.2"
@@ -552,7 +445,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.3"
 manifest_format = "2.0"
-project_hash = "e75f2fb5e16d6d4d7834ff74970a73fe14ba9a39"
+project_hash = "6e4a82ff3398bda4a54e5a4ece96fe6f74a99d98"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -777,6 +670,18 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "e329286945d0cfc04456972ea732551869af1cfc"
 uuid = "4e9b3aee-d8a1-5a3d-ad8b-7d824db253f0"
 version = "1.0.1+0"
+
+[[deps.Cairo]]
+deps = ["Cairo_jll", "Colors", "Glib_jll", "Graphics", "Libdl", "Pango_jll"]
+git-tree-sha1 = "71aa551c5c33f1a4415867fe06b7844faadb0ae9"
+uuid = "159f3aea-2a34-519c-b102-8c37f9878175"
+version = "1.1.1"
+
+[[deps.CairoMakie]]
+deps = ["CRC32c", "Cairo", "Cairo_jll", "Colors", "FileIO", "FreeType", "GeometryBasics", "LinearAlgebra", "Makie", "PrecompileTools"]
+git-tree-sha1 = "6d76f05dbc8b7a52deaa7cdabe901735ae7b6724"
+uuid = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+version = "0.13.1"
 
 [[deps.Cairo_jll]]
 deps = ["Artifacts", "Bzip2_jll", "CompilerSupportLibraries_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "JLLWrappers", "LZO_jll", "Libdl", "Pixman_jll", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Zlib_jll", "libpng_jll"]
@@ -1336,6 +1241,12 @@ git-tree-sha1 = "b0036b392358c80d2d2124746c2bf3d48d457938"
 uuid = "7746bdde-850d-59dc-9ae8-88ece973131d"
 version = "2.82.4+0"
 
+[[deps.Graphics]]
+deps = ["Colors", "LinearAlgebra", "NaNMath"]
+git-tree-sha1 = "a641238db938fff9b2f60d08ed9030387daf428c"
+uuid = "a2bd30eb-e257-5431-a919-1863eab51364"
+version = "1.1.3"
+
 [[deps.Graphite2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "01979f9b37367603e2848ea225918a3b3861b606"
@@ -1631,10 +1542,10 @@ uuid = "c1c5ebd0-6772-5130-a774-d5fcae4a789d"
 version = "3.100.2+0"
 
 [[deps.LERC_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "aaafe88dccbd957a8d82f7d05be9b69172e0cee3"
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
+git-tree-sha1 = "bf36f528eec6634efc60d7ec062008f171071434"
 uuid = "88015f11-f218-50d7-93a8-a6af411a945d"
-version = "4.0.1+0"
+version = "3.0.0+1"
 
 [[deps.LLVMOpenMP_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -1729,10 +1640,10 @@ uuid = "4b2f31a3-9ecc-558c-b454-b3730dcb73e9"
 version = "2.40.3+0"
 
 [[deps.Libtiff_jll]]
-deps = ["Artifacts", "JLLWrappers", "JpegTurbo_jll", "LERC_jll", "Libdl", "XZ_jll", "Zlib_jll", "Zstd_jll"]
-git-tree-sha1 = "4ab7581296671007fc33f07a721631b8855f4b1d"
+deps = ["Artifacts", "JLLWrappers", "JpegTurbo_jll", "LERC_jll", "Libdl", "Pkg", "Zlib_jll", "Zstd_jll"]
+git-tree-sha1 = "3eb79b0ca5764d4799c06699573fd8f533259713"
 uuid = "89763e89-9b03-5906-acba-b20f662cd828"
-version = "4.7.1+0"
+version = "4.4.0+0"
 
 [[deps.Libuuid_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -2134,6 +2045,12 @@ deps = ["OffsetArrays"]
 git-tree-sha1 = "0fac6313486baae819364c52b4f483450a9d793f"
 uuid = "5432bcbf-9aad-5242-b902-cca2824c8663"
 version = "0.5.12"
+
+[[deps.Pango_jll]]
+deps = ["Artifacts", "Cairo_jll", "Fontconfig_jll", "FreeType2_jll", "FriBidi_jll", "Glib_jll", "HarfBuzz_jll", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "3b31172c032a1def20c98dae3f2cdc9d10e3b561"
+uuid = "36c8627f-9965-5494-a995-c6b170f724f3"
+version = "1.56.1+0"
 
 [[deps.Parameters]]
 deps = ["OrderedCollections", "UnPack"]
@@ -2886,12 +2803,6 @@ git-tree-sha1 = "7d1671acbe47ac88e981868a078bd6b4e27c5191"
 uuid = "aed1982a-8fda-507f-9586-7b0439959a61"
 version = "1.1.42+0"
 
-[[deps.XZ_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "56c6604ec8b2d82cc4cfe01aa03b00426aac7e1f"
-uuid = "ffd25f8a-64ca-5728-b0f7-c24cf3aae800"
-version = "5.6.4+1"
-
 [[deps.Xorg_libX11_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Xorg_libxcb_jll", "Xorg_xtrans_jll"]
 git-tree-sha1 = "9dafcee1d24c4f024e7edc92603cedba72118283"
@@ -3006,9 +2917,9 @@ version = "1.3.7+2"
 
 [[deps.libwebp_jll]]
 deps = ["Artifacts", "Giflib_jll", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Libglvnd_jll", "Libtiff_jll", "libpng_jll"]
-git-tree-sha1 = "d2408cac540942921e7bd77272c32e58c33d8a77"
+git-tree-sha1 = "ccbb625a89ec6195856a50aa2b668a5c08712c94"
 uuid = "c5f90fcd-3b7e-5836-afba-fc50a0988cb2"
-version = "1.5.0+0"
+version = "1.4.0+0"
 
 [[deps.nghttp2_jll]]
 deps = ["Artifacts", "Libdl"]
@@ -3060,21 +2971,17 @@ version = "3.6.0+0"
 # ╠═70443561-13a1-438e-9177-90e35c47205f
 # ╠═01070f88-06d3-41b3-9d08-46faa6b41199
 # ╠═21afe7d5-85b6-4adf-8ec0-5f3a9a23507f
-# ╠═08a4b6a5-db09-4957-aa7e-70946109c521
 # ╠═e29d815a-9b9b-481b-abe7-865222f961d8
 # ╠═4ebe1996-7d27-4c38-90bb-a78466fbcf66
-# ╠═d01ef98f-1fd7-41ec-b8f3-f7aa154e4c84
-# ╠═6b67ee46-6c2c-401c-924c-3470631f11c7
 # ╠═4de0ecc8-d272-4750-9d97-b69776c03115
 # ╠═852bdf41-ade3-49b5-9414-76a51358f81b
 # ╠═c1d28602-dab5-49c7-aa8d-31bdee8d2abc
 # ╠═2bee1d29-9fe8-40cc-81f6-d895dcb220be
 # ╠═c8375060-fb78-4343-842a-8b9ce8f4f90e
 # ╠═521f140f-2322-438a-8a6a-e459dace3196
-# ╟─615a2bb0-f1ab-4469-8d2e-eb10e077de1d
-# ╠═6ff30595-de0a-4f57-8d24-0c3c120f7f04
+# ╠═615a2bb0-f1ab-4469-8d2e-eb10e077de1d
 # ╠═9c28c405-a62f-43ed-beba-38ebc08ceeec
-# ╠═23736080-0058-4289-a8d2-e85217d0c101
-# ╟─f2f265c0-75f0-4d6f-92b6-c21ac6420b39
+# ╠═48d86efe-d2cb-4611-8126-3ad7cfd85df1
+# ╠═8fb3fc94-f9c3-4fee-93f0-95f5f6b1bc0f
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

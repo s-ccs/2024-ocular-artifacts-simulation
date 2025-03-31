@@ -4,177 +4,62 @@
 using Markdown
 using InteractiveUtils
 
-# This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
-macro bind(def, element)
-    #! format: off
-    quote
-        local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
-        local el = $(esc(element))
-        global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
-        el
-    end
-    #! format: on
-end
-
-# ╔═╡ 58cfd854-4f0c-11ee-33d6-71433b23db47
+# ╔═╡ 3a271e46-e43f-46e0-84bf-32192c9b8fe5
 begin
+	using CairoMakie # for saving plots 
 	using WGLMakie
 	using MAT
 	using StableRNGs
 	using UnfoldSim
 	using LinearAlgebra
-	using PlutoUI
+	using Statistics
+	using AngleBetweenVectors
 
 	# for helper function to read in the large model
 	using HDF5
 	using DataFrames
-
+	
 	#topoplots
 	using UnfoldMakie
 	using TopoPlots
 end
 
-# ╔═╡ 535a3124-0658-4e3b-8245-3c023c0e5f1d
+# ╔═╡ 5e6b5bca-bd66-4325-8744-1afe2e83a04f
 begin
-	using Statistics
-	using AngleBetweenVectors
+	using PlutoLinks # to watch and reload the utility scripts file
 end
 
-# ╔═╡ 398cf988-b75d-45b4-b8c8-6bb2342682d0
+# ╔═╡ 39e670c1-3b51-4cd3-b801-e31cfb9e1553
 begin
-	function read_new_hartmut(;p = "HArtMuT_NYhead_large_fibers.mat")
-		file = matopen(p);
-		hartmut = read(file, "HArtMuT");
-		close(file)
-		
-		fname = tempname(); # temporary file
-		
-		fid = h5open(fname, "w") 
-		
-		
-		label = string.(hartmut["electrodes"]["label"][:, 1])
-		chanpos = Float64.(hartmut["electrodes"]["chanpos"])
-		
-		cort_label = string.(hartmut["cortexmodel"]["labels"][:, 1])
-		cort_orient = hartmut["cortexmodel"]["orientation"]
-		cort_leadfield = hartmut["cortexmodel"]["leadfield"]
-		cort_pos = hartmut["cortexmodel"]["pos"]
-		
-		
-		art_label = string.(hartmut["artefactmodel"]["labels"][:, 1])
-		art_orient = hartmut["artefactmodel"]["orientation"]
-		art_leadfield = hartmut["artefactmodel"]["leadfield"]
-		art_pos = hartmut["artefactmodel"]["pos"]
-		
-		e = create_group(fid, "electrodes")
-		e["label"] = label
-		e["pos"] = chanpos
-		c = create_group(fid, "cortical")
-		c["label"] = cort_label
-		c["orientation"] = cort_orient
-		c["leadfield"] = cort_leadfield
-		c["pos"] = cort_pos
-		a = create_group(fid, "artefacts")
-		a["label"] = art_label
-		a["orientation"] = art_orient
-		a["leadfield"] = art_leadfield
-		a["pos"] = art_pos
-			a["fiber"] = Int.(hartmut["artefactmodel"]["fiber"][1,:])
-		a["dist_from_muscle_center"] = hartmut["artefactmodel"]["dist_from_muscle_center"][1,:]
-		close(fid)
-		
-		#-- read it back in (illogical, I know ;)
-        h = h5open(fname)
-
-
-        weirdchan = ["Nk1", "Nk2", "Nk3", "Nk4"]
-        ## getting index of these channels from imported hartmut model data, exclude them in the topoplot
-        remove_indices =
-            findall(l -> l ∈ weirdchan, h["electrodes"] |> read |> x -> x["label"])
-		print(remove_indices)
-
-        function sel_chan(x)
-
-            if "leadfield" ∈ keys(x)
-                x["leadfield"] = x["leadfield"][Not(remove_indices), :, :] .* 10e3 # this scaling factor seems to generate potentials with +-1 as max
-            else
-                x["label"] = x["label"][Not(remove_indices)]
-                pos3d = x["pos"][Not(remove_indices), :]
-                pos3d = pos3d ./ (4 * maximum(pos3d, dims = 1))
-                x["pos"] = pos3d
-            end
-            return x
-        end
-        headmodel = Hartmut(
-            h["artefacts"] |> read |> sel_chan,
-            h["cortical"] |> read |> sel_chan,
-            h["electrodes"] |> read |> sel_chan,
-        )
-		return headmodel
-	end
+	using FileIO
 end
 
-# ╔═╡ 850b1a81-c1fd-463a-abc9-e7484ef8555c
+# ╔═╡ 9b2734ad-d052-4d16-99c4-ef687257bcfe
 begin
-	function read_eyemodel(;p = "HArtMuT_NYhead_extra_eyemodel.mat")
-		# read the intermediate eye model (only eye-points)
-		file = matopen(p);
-		hartmut = read(file,"eyemodel")
-		close(file)
-		hartmut["label"] = hartmut["labels"]
-		hartmut
-	end
+	using CoordinateTransformations
 end
 
-# ╔═╡ 2fde0e5e-7543-4149-bf74-9b65573cc462
+# ╔═╡ f99cff61-c795-4f86-af35-c4f6cb5ab21a
+using PlutoUI
+
+# ╔═╡ c9125a84-e898-11ef-1440-138458aa6009
+@use_file include("../scripts/utils.jl") 
+
+# ╔═╡ c24e4fb9-adc3-474b-bafc-12130490260c
 begin
-	# import large and small hartmut models
-	# hart_large = read_new_hartmut(; p="HArtMuT_NYhead_large_fibers.mat");
-	hart_small = UnfoldSim.headmodel();
-	hartmut = hart_small; #hart_large # select the large or small model
-	model = hartmut.artefactual;
-	# show the count of source points
-	println("\nSize of source points Dict (points x dimensions): ", size(model["pos"]))
-	model # view the structure of the model
+#=
+Steps:
+- import eyemodel - remove extra electrodes
+- calculate source indices for a list of labels
+- ensemble: 
+	- calculate orientations for simulation source points, away from the center, and set these in the same eyemodel object
+	- calculate leadfield for retina and cornea given a particular gaze position (NOTE: this function assumes orientation for each eye point is already calculated away from the center of the respective eyeball. This will only calculate leadfield weighted by gaze direction. currently has the same gazedirection for both eyes)
+	- for trajectory: repeat previous step for each gaze vector.  
+- CRD: 
+=#
 end
 
-# ╔═╡ 275c91de-8790-4a44-937b-a55a770dd9ee
-begin
-	function hart_indices_from_labels(headmodel,labels=["dummy"]; plot=false)
-		# given a headmodel and a list of labels, return a Dict with the keys being the label and the values being the indices of sources with that label in the given model. plot=true additionally plots the points into an existing Makie figure. 
-		labelsourceindices = Dict()
-		for l in labels
-			labelsourceindices[l] = findall(k->occursin(l,k),headmodel["label"][:])
-			if plot
-				WGLMakie.scatter!(model["pos"][labelsourceindices[l],:]) #optional: plot these points into the existing figure
-			end
-			println(l, ": ", length(labelsourceindices[l])," points")
-		end
-		return labelsourceindices
-	end
-end
-
-# ╔═╡ 09258399-2468-45f8-ba35-b244ffe21373
- unique(model["label"]) # view the list of labels (unique)
-
-# ╔═╡ 5b85e5e3-13c4-4584-982e-044984d37ea0
-begin
-	# get the list of labels
-	artefactlabels = unique(model["label"])
-	# scroll through to select whichever artefact label you want to plot
-	labelselector = @bind x NumberField(1:length(artefactlabels))
-end
-
-# ╔═╡ e69e6c73-a4f1-4efb-8ba7-b9e9e20305e4
-begin
-	f = WGLMakie.scatter(model["pos"], alpha=0.2, color="grey")
-	# optional: plot points for a specific label (select value from UI spinner with @bind x)
-	WGLMakie.scatter!(model["pos"][findall(k->occursin(artefactlabels[x],k),model["label"][:]),:]);
-	println("currently inspecting label: ", artefactlabels[x])	
-	# f
-end
-
-# ╔═╡ 55d651d4-feea-470f-8640-e542a4620c36
+# ╔═╡ b34dd987-fc86-4c0c-b0fd-ee7f10983734
 begin
 	# Search source labels for specific keywords and find the indices of those sources
 	
@@ -183,437 +68,457 @@ begin
 				,"Retina"
 				# ,"leftright" # all combined sources. does not split between retina & cornea.
 				,r"EyeRetina_Choroid_Sclera_left$" # match the end of the search term, or else it also matches "leftright" sources.
-				,"EyeCornea_left_"
 				,r"EyeRetina_Choroid_Sclera_right$"
-				,"EyeCornea_right_"
-				,"left" # for intermediate eyemodel; there are only eye points and no symmetric (leftright) sources
-				,"right" # ditto here
+				,"EyeCornea_left" # new spherical eyemodel - only one set of sources per eye and the labels are different
+				,"EyeCornea_right" # same as above
+				,"EyeCenter_right"
+				,"EyeCenter_left"
 			]
-	# TODO: add label search term for complete L/R eye (instead of separate retina/cornea) and one for all L&R/retina&cornea points
-	# TODO: add label to select only horizontal or only vertical oriented cornea sources? -> may not be necessary if all sources have only one orientation (namely towards the eye center) 
-	labelsourceindices = hart_indices_from_labels(model,labels) 
+	"set the list of labels for which we will pre-find indices"
 end
 
-# ╔═╡ b4bd229e-2f51-4df3-adf2-3d566d4f9374
+# ╔═╡ fa7aaded-fcd1-4049-a611-462115614910
 begin
-	# Miscellaneous code snippets
-	
-	# inspect orientation of a set of source points 
-	# model["orientation"][150:220,:]
-	
-	# inspect (unique) labels for one eye
-	# eyeleft_labels_unique = unique(model["label"][eyeleft_idx,:])
+	# eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_hull_mesh8_2025-03-01.mat")
+	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_sphere_mesh8_2025-03-01.mat")
+	remove_indices = [164, 165, 166, 167] # since eyemodel structure doesn't exactly correspond to the main hartmut mat structure expected by the read_new_hartmut function, just get the indices of the electrodes that it drops & drop the same indices from eyemodel directly 
+	eyemodel["leadfield"] = eyemodel["leadfield"][Not(remove_indices), :, :]
+	"load eyemodel and remove electrodes like in read_new_hartmut"
 end
 
-# ╔═╡ b6d9426a-1632-4fc7-a8eb-6fde0c60f0cb
+# ╔═╡ 05a80c04-af93-47f3-99db-83c0b5a6b920
+eyemodel
+
+# ╔═╡ 3756412a-0715-4ae4-9e32-f46978e60a38
 begin
-	eyeleft_idx = [ 
-		labelsourceindices["EyeCornea_left_"] ; labelsourceindices[r"EyeRetina_Choroid_Sclera_left$"] 
-	]
-	eyeright_idx = [ 
-		labelsourceindices["EyeCornea_right_"] ; labelsourceindices[r"EyeRetina_Choroid_Sclera_right$"] 
-	]
+	# import small headmodel temporarily for electrode positions, since eyemodel does not include them
+	hart_small = UnfoldSim.headmodel()
+	pos3d = hart_small.electrodes["pos"]
+	electrode_pos = pos2dfrom3d(pos3d)
+	"get electrode positions from small headmodel"
 end
 
-# ╔═╡ 3e3d9d93-30ee-48e0-854f-4d55cabd2ce9
-begin	
-	# plot eye sources and L/R eye centroids
-	
-	# fig_eyes = WGLMakie.scatter(model["pos"], alpha=0.025, color="grey");
-	
-	# positions of left and right eyeball points 
-	eyeleft_positions =	model["pos"][eyeleft_idx,:]
-	eyeright_positions = model["pos"][eyeright_idx,:]
-	
-	# find center
-	eyeleft_center = Statistics.mean(eyeleft_positions,dims=1)
-	eyeright_center = Statistics.mean(eyeright_positions,dims=1)
-	
-	# WGLMakie.scatter!(eyeleft_positions)
-	# WGLMakie.scatter!(eyeright_positions) 
-	# WGLMakie.scatter!(eyeright_center)
-	# WGLMakie.scatter!(eyeleft_center,color="red")
-
-	# for report plots
-	fig_eyes = WGLMakie.scatter([0 0 0], alpha=0, color="grey");
-	# eyeleft_positions =	model["pos"][eyeleft_idx,:]
-	# eyeright_positions = model["pos"][eyeright_idx,:]["EyeCornea_left_"] ; labelsourceindices[r"EyeRetina_Choroid_Sclera_left$"]
-	WGLMakie.scatter!(model["pos"][[labelsourceindices["EyeCornea_left_"];labelsourceindices["EyeCornea_right_"]],:])
-	WGLMakie.scatter!(model["pos"][[labelsourceindices[r"EyeRetina_Choroid_Sclera_left$"];labelsourceindices[r"EyeRetina_Choroid_Sclera_right$"]],:])
-	fig_eyes
-end
-
-# ╔═╡ e5ef7838-8ac0-4903-9e09-4b2bf8094cbc
-# WGLMakie.Page()
-
-# ╔═╡ 0be94a3d-20aa-4a53-aea9-a99f7b57599d
+# ╔═╡ fe8025c9-3f52-401f-bbdb-60d0dffafd2a
 begin
-	# inspect sources - plot position & orientation (exaggerated arrow lengths to see orientation better)
-
-	# plotting only cornea of only the right eye. retina-right-eye is plotted in another cell.
-
-	# cornea: horizontal as well as vertical oriented sources are available. Selecting horizontal for now
-	pos_cornea = model["pos"][findall(k->occursin("EyeCornea_right_horizontal",k), model["label"][:]),:]
-	or_cornea = model["orientation"][findall(k->occursin("EyeCornea_right_horizontal",k), model["label"][:]),:]
-
-	fig_cornea = WGLMakie.scatter(model["pos"], alpha=0.1, color="grey")
-	point3fs = [Point3f(p...) for p in eachrow(pos_cornea)]
-	vectors = [Vec3f(o...) for o in eachrow(or_cornea).*3]
-	arrows!(point3fs, vectors, arrowsize=0.3)
-
-	# fig_cornea
-	
-
-	# # another option: forget about horizontal/vertical distinction and retina/cornea, just select positions and orientations of the right eye and plot those
-	# eyeright_orientations = model["orientation"][eyeright_idx,:]
+	# find indices for specific source labels
+	lsi_eyemodel = hart_indices_from_labels(eyemodel,labels) 
 end
 
-# ╔═╡ 0043e40c-f667-4838-9ef7-d987af94a4d1
-begin
-	# plot retina sources - position & orientation (exaggerated arrow lengths to see orientation better)
-
-	# retina_choroid_sclera: no horizontal/vertical, just one set of orientations
-	pos_retina = model["pos"][findall(k->occursin("EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:]
-	or_retina = model["orientation"][findall(k->occursin("EyeRetina_Choroid_Sclera_right",k), model["label"][:]),:]
-	
-	fig_retina = WGLMakie.scatter(model["pos"], alpha=0.05, color="grey")
-	point3fs2 = [Point3f(p...) for p in eachrow(pos_retina)]
-	vectors2 = [Vec3f(o...) for o in eachrow(or_retina).*6]
-	arrows!(point3fs2, vectors2, arrowsize=0.3)
-	# fig_retina
-end
-
-# ╔═╡ 37412158-83a3-48b2-9384-17c6886c9ea3
-begin
-	#from unfoldsim docs multichannel
-	pos3d = hartmut.electrodes["pos"];
-	pos2d = to_positions(pos3d')
-	pos2d = [Point2f(p[1] + 0.5, p[2] + 0.5) for p in pos2d]; 
-end
-
-# ╔═╡ b3573611-eeaa-468a-a320-baa5798e5276
+# ╔═╡ 13c37f0e-aedb-46be-9e50-9955536041de
 # WGLMakie.Page() # to fix issue of 3d plots not rendering properly
 
-# ╔═╡ 4f9e79fd-7b61-469c-a0a0-815a1a1401dd
-# new section: begin exploring eyemodel
-
-# ╔═╡ c232c5d9-c3ce-40af-b3d0-523bc7baac54
-# begin
-# 	eyemodel = read_eyemodel(; p="HArtMuT_NYhead_extra_eyemodel_new_2025-02-10.mat")
-# 	remove_indices = [164, 165, 166, 167] # since eyemodel structure doesn't exactly correspond to the main hartmut mat structure expected by read_new_hartmut function, just get the indices of the electrodes that it drops & drop the same indices from eyemodel directly 
-# 	eyemodel["leadfield"] = eyemodel["leadfield"][Not(remove_indices), :, :] .* 10e3
-# 	""
-# end
-
-# ╔═╡ b4fb0ea9-b124-4bb8-aaea-3d16a3201843
-# begin
-# 	lsi_eyemodel = hart_indices_from_labels(eyemodel,labels)
-# 	f_neweyemodel = WGLMakie.scatter(eyemodel["pos"], markersize=5,alpha=0.2, color="grey")
-# 	# WGLMakie.scatter!(eyemodel["pos"])
-# 	WGLMakie.scatter!(eyemodel["pos"][Not(lsi_eyemodel["Cornea"]),:])
-# 	# WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Cornea"],:])
-# 	# f_neweyemodel
-# end
-
-# ╔═╡ 36c9c5fa-c2b7-46d9-99fe-f40f1e7db65a
-# size(eyemodel["pos"])
-
-# ╔═╡ ac82f7aa-1fb2-41dd-9dda-d69122c8bb13
-# Improvements, further TODOs, other notes:
-
-# TODO: re-weighting both eyes according to number of points?
-# TODO: add proper titles for each of the plots
-# TODO: check how many retina points are being falsely categorised as cornea or vice versa based on just angle<max_cornea_angle
-
-# ╔═╡ 69b399c5-4360-4571-8524-92d1669805cf
-# begin
-# 	function calc_orientations(reference, positions; direction="towards")
-# 		# calculate orientations from the given positions w.r.t. the reference
-# 		if direction == "towards"
-# 			orientation_vecs = reference .- positions
-# 		else
-# 			orientation_vecs = positions .- reference
-# 		end
-# 		return orientation_vecs ./ norm.(eachrow(orientation_vecs))
-# 	end
-# end
-
-# ╔═╡ 41e1688c-8ed0-40ea-a31b-93faff95cf68
-# begin
-# 	# now working with eyemodel 
-
-# 	eyemodel_left_idx = [ 
-# 		lsi_eyemodel["EyeCornea_left_"] ; lsi_eyemodel[r"EyeRetina_Choroid_Sclera_left$"] 
-# 	]
-# 	eyemodel_right_idx = [ 
-# 		lsi_eyemodel["EyeCornea_right_"] ; lsi_eyemodel[r"EyeRetina_Choroid_Sclera_right$"] 
-# 	]
-# 	em_sim_idx = [eyemodel_left_idx; eyemodel_right_idx] # indices in eyemodel, of the points which we want to use to simulate data, i.e. retina & cornea
-	
-# 	# positions of left and right Retina&Cornea points in eyemodel, and their centroid
-# 	em_positions_L = eyemodel["pos"][eyemodel_left_idx,:]
-# 	em_positions_R = eyemodel["pos"][eyemodel_right_idx,:]
-# 	eye_center_L = Statistics.mean(em_positions_L,dims=1)
-# 	eye_center_R = Statistics.mean(em_positions_R,dims=1)
-	
-# 	# find center
-	
-# 	# finding centroid using all eye points
-# 	eyeall_idx_L = lsi_eyemodel["left"]
-# 	eyeall_idx_R = lsi_eyemodel["right"] 
-# 	eyeall_center_L = Statistics.mean(eyemodel["pos"][eyeall_idx_L,:],dims=1) # [ -30.972  56.9449  -37.1539] from all eyepoints in model 2025-02-10, including inside-eye points (aqueous, vitreous,...)
-# 	eyeall_center_R = Statistics.mean(eyemodel["pos"][eyeall_idx_R,:],dims=1) # [31.986  56.5737  -37.1178] from all eyepoints in model 2025-02-10, including inside-eye points (aqueous, vitreous,...)
-
-# 	# finding mean cornea point and approximate gaze direction (as mean of cornea orientations)
-# 	cornea_center_R = Statistics.mean(eyemodel["pos"][lsi_eyemodel["EyeCornea_right_"],:],dims=1)
-# 	cornea_center_L = Statistics.mean(eyemodel["pos"][lsi_eyemodel["EyeCornea_left_"],:],dims=1)
-# 	gazedir_R = mean(eyemodel["orientation"][lsi_eyemodel["EyeCornea_right_"],:], dims=1).*10
-# 	gazedir_L = mean(eyemodel["orientation"][lsi_eyemodel["EyeCornea_left_"],:], dims=1).*10
-# 	gazedir_model_avg = mean(eyemodel["orientation"][[lsi_eyemodel["EyeCornea_right_"];lsi_eyemodel["EyeCornea_left_"]],:], dims=1)
-# end
-
-# ╔═╡ bc69d158-ffb3-44eb-a70a-363c0044ff2e
-# begin
-# 	# plot eyemodel sources with calculated orientations; centroids; approx. gaze direction.
-	
-# 	fig_eyemodel_orientations = WGLMakie.scatter([0 0 0], alpha=0.025, color="grey")
-	
-# 	point3fs_o = [Point3f(p...) for p in eachrow([eyemodel["pos"];cornea_center_R;cornea_center_L;[0 0 0];[0 75 0]])]
-# 	vectors_o = [Vec3f(o...) for o in eachrow([eyemodel["orientation"];gazedir_R;gazedir_L;gazedirection.*10;gazedir_model_avg.])]
-# 	arrows!(point3fs_o, vectors_o.*6, arrowsize=0.7)
-	
-# 	WGLMakie.scatter!(eyemodel["pos"][em_sim_idx,:])
-# 	# red points - centroid considering ALL eye sources
-# 	WGLMakie.scatter!(eyeall_center_L,color="red")
-# 	WGLMakie.scatter!(eyeall_center_R,color="red")
-# 	# pink points - centroid using just retina&cornea sources
-# 	WGLMakie.scatter!(eye_center_L,color="pink")
-# 	WGLMakie.scatter!(eye_center_R,color="pink")
-# 	fig_eyemodel_orientations
-# end
-
-# ╔═╡ 5fefaa42-dad1-4d74-a32b-13d20c8b6cda
-# begin
-# 	# calculate orientations wrt centroid
-# 	# calculate all orientations away from center, later use negative weightage for the points where the source dipole points towards the centroid.
-	
-# 	eyemodel["orientation"] = zeros(size(eyemodel["pos"]))
-	
-# 	eyemodel["orientation"][eyemodel_right_idx,:] = calc_orientations(eyeall_center_R, em_positions_R; direction="away")
-	
-# 	eyemodel["orientation"][eyemodel_left_idx,:] = calc_orientations(eyeall_center_L, em_positions_L; direction="away")
-
-# 	# eyemodel["orientation"][lsi_eyemodel["Cornea"],:] = eyemodel["orientation"][lsi_eyemodel["Cornea"],:] .* -1 # was earlier used for the case where cornea and retina sources have opposite orientations: cornea away from the center, so reverse the calculated towards-center orientations.
-	
-# 	eyemodel["orientation"]
-# end
-
-# ╔═╡ 0ee5ea4c-5c58-4868-834f-94f7f6fa946d
-# begin
-# 	mag_eyemodel = magnitude(eyemodel["leadfield"],eyemodel["orientation"])
-# 	mag_eyemodel_retina = sum(mag_eyemodel[:,ii] for ii in lsi_eyemodel["Retina"])
-# 	mag_eyemodel_cornea = sum(mag_eyemodel[:,ii] for ii in lsi_eyemodel["Cornea"])
-# 	weights = [1 -1] # if orientations match biological model, make both weights positive since retina & cornea source orientations are already calculated opposite to each other. Else, cornea minus retina
-# 	weighted_difference_LF = mag_eyemodel_cornea.*weights[1] + mag_eyemodel_retina.*weights[2] 
-# end
-
-# ╔═╡ e244557e-fb96-46b0-970f-13894709ddaa
-# begin
-# 	# simple/ direct topoplot of weighted difference & cornea/retina individually (eyemodel)
-# 	f_topopolots_eyesim = Figure()
-# 	plot_topoplot!(
-# 		f_topopolots_eyesim[1,1], weighted_difference_LF, positions=pos2d)
-# 	plot_topoplot!(
-# 		f_topopolots_eyesim[2,1], mag_eyemodel_cornea, positions=pos2d)
-# 	plot_topoplot!(
-# 		f_topopolots_eyesim[2,2], mag_eyemodel_retina, positions=pos2d)
-# 	# f_topopolots_eyesim
-# end
-
-# ╔═╡ 26b58e7d-42a4-4e44-a902-165a52bf654c
-# begin
-# 	plot_r_c_topo(mag_eyemodel_cornea,mag_eyemodel_retina)
-# end
-
-# ╔═╡ 0e05c45d-f81b-4e7e-b2c2-cbfef4b8633c
-# begin
-# 	# topoplot of weighted difference & cornea/retina individually (eyemodel), using `enlarge` 
-# 	f_topopolots_eyesim2 = Figure()
-# 	plot_topoplot!(
-# 		f_topopolots_eyesim2[1,1], weighted_difference_LF, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false,),)#colorbar=(; limits=(-47, 365)))
-# 	plot_topoplot!(
-# 		f_topopolots_eyesim2[2,1], mag_eyemodel_cornea, positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = false,colorrange=(-84,365)),)#colorbar=(; limits=(-47, 365)))
-# 	plot_topoplot!(
-# 		f_topopolots_eyesim2[2,2], mag_eyemodel_retina, positions=pos2d, layout=(; use_colorbar=false), visual = (; enlarge = 0.65, label_scatter = false,colorrange=(-84,365)),)#colorbar=(; limits=(-47, 365)))
-# 	Colorbar(f_topopolots_eyesim2[:,3]; limits=(-84,365), colormap = Reverse(:RdBu))
-# 	f_topopolots_eyesim2
-# end
-
-# ╔═╡ fefafce9-115c-49c9-9000-9427a5d69658
-# begin
-# 	# plot only retina and cornea, new eyemodel
-	
-# 	f_new_eyes,ax,h = WGLMakie.scatter(eyemodel["pos"][em_sim_idx,:],color=angles[:]) 
-# 	# color=eyeweights[em_sim_idx]) to colour the points based on cornea/retina segmentation by gaze angle
-# 	# color = angles[:] to colour based on angle w.r.t. neutral gaze direction of original model
-	
-# 	Colorbar(f_new_eyes[1,2],h)
-# 	f_new_eyes
-# end
-
-# ╔═╡ 8e81fcfb-6b1b-4ccc-be47-d01f3a11d47d
-# begin
-# 	function angle(a,b) 
-# 		return acosd.(dot(a, b)/(norm(a)*norm(b)))
-# 	end
-# end
-
-# ╔═╡ 76892093-ef45-449f-9c60-62eef4fd091f
-# angle([100 0 0], [0 100 0]) # sanity check for angle function
-
-# ╔═╡ 294e27bb-627c-46c6-8b6f-c58bc441607e
-# begin
-# 	gazedirection = [0. 1. 0.] # use Floats: angle calculation function gives errors if we use integers.
-	
-# 	angles = mapslices(x->angle(x,gazedir_model_avg),eyemodel["orientation"][em_sim_idx,:],dims=2)
-# 	# angles_R = mapslices(x->AngleBetweenVectors.angle(x,gazedir_R),eyemodel["pos"][em_sim_idx,:],dims=2)
-# 	# maximum(angles), minimum(angles)
-# 	# angles.<30
-# 	an = mapslices(x -> rad2deg(AngleBetweenVectors.angle(vec(x),vec(gazedir_model_avg))),eyemodel["orientation"][em_sim_idx,:],dims=2)
-# end
-
-# ╔═╡ eb9925ba-bafd-4256-9f0d-1b1061e4460c
-# begin
-# 	@info maximum(an), minimum(an) # sanity check - max & minimum angles should be roughly between 0-180 
-# 	an_cornea_R = angles[lsi_eyemodel["Retina"]] #EyeCornea_right_
-# 	@info maximum(an_cornea_R), minimum(an_cornea_R)
-# end
-
-# ╔═╡ ce6a92ee-7f8d-40db-8640-16812d221c39
-# begin
-# 	function weights_from_gazedir(orientation, gazedir, max_cornea_angle_deg)
-# 		if(angle(orientation,gazedir)<=max_cornea_angle_deg)
-# 			return 1
-# 		else 
-# 			return -1
-# 		end
-# 	end
-# 	eyeweights = zeros(size(eyemodel["pos"])[1])
-# 	eyeweights[em_sim_idx] .= mapslices(x -> weights_from_gazedir(x,gazedirection,54.0384),eyemodel["orientation"][em_sim_idx,:],dims=2)
-# 	eyeweights
-# end
-
-# ╔═╡ 7cefc189-5d38-4da4-8772-dd26d37e75f8
-# begin
-# 	mag_em = magnitude(eyemodel["leadfield"],eyemodel["orientation"])
-# 	mag_em_sum = sum(mag_eyemodel[:,ii].*eyeweights[ii] for ii in em_sim_idx)
-# 	# mag_eyemodel_cornea = sum(mag_eyemodel[:,ii] for ii in lsi_eyemodel["Cornea"])
-# end
-
-# ╔═╡ 13a9a336-b29f-4728-9c72-6f0617d54377
-# # [eyeweights[lsi_eyemodel["Cornea"]] eyemodel["orientation"][lsi_eyemodel["Cornea"],:]]
-
-# ╔═╡ 67f0e0a2-16ea-4930-bec2-556a3f954bee
-# begin
-# 	f_topopolots_gazeB = Figure()
-# 	plot_topoplot!(
-# 		f_topopolots_gazeB[1,1], mag_em_sum-weighted_difference_LF, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
-# 	plot_topoplot!(
-# 		f_topopolots_gazeB[2,1], weighted_difference_LF, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
-# 	plot_topoplot!(
-# 		f_topopolots_gazeB[2,2], mag_em_sum, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)#colorbar=(; limits=(-47, 365)))
-# 	f_topopolots_gazeB
-# end
-
-# ╔═╡ 41b27ecd-d080-400f-bf47-281e5fca2cca
-# @info mag_em_sum-weighted_difference_LF
-
-# ╔═╡ 6d27dc13-6098-4692-a029-2598c97ed700
-# function plot_r_c_topo(cornea_LF, retina_LF)
-# 	# given cornea and retina leadfields, plot them both and the resultant cornea-retina difference leadfield
-# 	f = Figure()
-# 	plot_topoplot!(
-# 		f[1,1], cornea_LF-retina_LF, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
-# 	plot_topoplot!(
-# 		f[2,1], cornea_LF, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
-# 	plot_topoplot!(
-# 		f[2,2], retina_LF, positions=pos2d, layout=(; use_colorbar=true), visual = (; enlarge = 0.65, label_scatter = false),)
-# 	return f
-# end
-
-# ╔═╡ fcdc2cf9-ddb5-41ec-a310-9e607375a6a0
+# ╔═╡ 28f897bc-1c6d-4c10-888b-c83060c3389b
 begin
-	sel_electrodes = [7,8, 159, 147, 150, 164]
-		# [7,8, 120, 121, 157, 158, 159, 151, 154, 147, 150] # collect(157:159) # [120, 121 ] #
-	@info typeof(sel_electrodes)
-	@info typeof(findall(k->occursin(artefactlabels[x],k),model["label"][:]))
+	# Steps to simulate trajectory:
+	# - calculate set of gaze direction vectors, here from a pure set of angles in a specified range
+	# - simulate leadfields for each gazedir vector
 end
 
-# ╔═╡ 0430bf2d-8ec4-489f-a0b4-a6c8d6d3071b
+# ╔═╡ 6eb97701-d8e2-4ef9-b518-1e346246cc53
 begin
-	f_electrodes = WGLMakie.scatter(hartmut.electrodes["pos"], alpha=0.4, color="grey")
-	# WGLMakie.scatter!(model["pos"], alpha=0.4, color="grey")
-	# WGLMakie.scatter!(model["pos"][vcat(labelsourceindices["Cornea"]),:], alpha=0.4, color="yellow")
-	# WGLMakie.scatter!(model["pos"], alpha=0.1, color="grey")
-	# optional: plot points for a specific label (select value from UI spinner with @bind x)
-	vec = hartmut.electrodes["pos"][sel_electrodes,:]
-	@info typeof(vec)
-	# v = [
-	# 	# vec...; 
-	# 	0 0 0;
-	# ]
-	# WGLMakie.scatter!(hartmut.electrodes["pos"][1,:]);
-	WGLMakie.scatter!(vec', color="red");
-	@info vec
-	# @info "currently inspecting electrodes: ", sel_electrodes	
-	f_electrodes
+	# calculating: left/right eye indices, eye centroids, gaze directions
+	
+	eyemodel_left_idx = [ 
+		lsi_eyemodel["EyeCornea_left"] ; lsi_eyemodel[r"EyeRetina_Choroid_Sclera_left$"] 
+	]
+	eyemodel_right_idx = [ 
+		lsi_eyemodel["EyeCornea_right"] ; lsi_eyemodel[r"EyeRetina_Choroid_Sclera_right$"] 
+	]
+	sim_srcs_idx = [eyemodel_left_idx; eyemodel_right_idx] # indices in eyemodel, of the points which we want to use to simulate data, i.e. retina & cornea
+	
+	# positions of left and right Retina&Cornea points in eyemodel, and their centroid (centroid is not used now in favour of eye center points provided in spherical model)
+	em_positions_L = eyemodel["pos"][eyemodel_left_idx,:]
+	em_positions_R = eyemodel["pos"][eyemodel_right_idx,:]
+	# eye_center_L = Statistics.mean(em_positions_L,dims=1)
+	# eye_center_R = Statistics.mean(em_positions_R,dims=1)
+	# mean_center_idx = [UnfoldSim.closest_src(Statistics.mean(em_positions_L,dims=1)[1,:], eyemodel["pos"]);  UnfoldSim.closest_src(Statistics.mean(em_positions_R,dims=1)[1,:], eyemodel["pos"])]
+	
+	eye_center_L = eyemodel["pos"][lsi_eyemodel["EyeCenter_left"],:]
+	eye_center_R = eyemodel["pos"][lsi_eyemodel["EyeCenter_right"],:]
+
+	# Previously calculated values for centroid using all eye points (incl. aqueous/vitreous etc)
+	# eyeall_center_L = [ -30.972  56.9449  -37.1539];
+	# eyeall_center_R = [31.986  56.5737  -37.1178];
+
+	"calculate left/right eye indices, eye centre/centroids, gaze directions" 
 end
 
-# ╔═╡ 00923ca5-edb6-481e-9634-3b552ec7290a
-hartmut.electrodes
-
-
-# ╔═╡ 2ef19a57-6de7-4e2c-9568-b85360322df3
+# ╔═╡ a3deace1-21a2-4c5a-a68a-84e31360d986
 begin
-	# reference: Cz? Like in our caps? Does it make sense to have a reference for a static point in time? But then we're not looking at a static point. we're taking the difference from t=0 centre gaze. So our B-A is already an EEG signal value at time point t. Or is it? in eeg are we taking the difference from a reference electrode rather than from a time point?
+	# calculate orientations wrt centre
+	# calculate all orientations away from center, later use negative weightage for the points where the source dipole points towards the centroid.
+	
+	eyemodel["orientation"] = zeros(size(eyemodel["pos"]))
+	
+	eyemodel["orientation"][eyemodel_right_idx,:] = calc_orientations(eye_center_R, em_positions_R; direction="away") 
+	
+	eyemodel["orientation"][eyemodel_left_idx,:] = calc_orientations(eye_center_L, em_positions_L; direction="away")
+	"calculate eye source orientations away from respective centre"
 end
 
-# ╔═╡ 800ca02e-f196-426d-b8c1-5a0a036ed428
+# ╔═╡ dc315567-4d47-44dc-aea6-4eb500da2d3d
 begin
-	norm_chan_locs = hart_small.electrodes["pos"]
-	norm_src_locs = model["pos"]
-	max_chan = maximum(norm_chan_locs,dims=1)
-	min_chan = minimum(norm_chan_locs,dims=1)
-	max_src = maximum(norm_src_locs,dims=1)
-	min_src = minimum(norm_src_locs,dims=1)
-	diff_chan = max_chan .- min_chan
-	diff_src = max_src .- min_src
+	# finding cornea centers and approximate gaze direction (as mean of cornea orientations)
+	cornea_center_R = Statistics.mean(eyemodel["pos"][lsi_eyemodel["EyeCornea_right"],:],dims=1)
+	cornea_center_L = Statistics.mean(eyemodel["pos"][lsi_eyemodel["EyeCornea_left"],:],dims=1)
+	gazedir_R = mean(eyemodel["orientation"][lsi_eyemodel["EyeCornea_right"],:], dims=1).*10
+	gazedir_L = mean(eyemodel["orientation"][lsi_eyemodel["EyeCornea_left"],:], dims=1).*10
+	gazedir_model_avg = mean(eyemodel["orientation"][[lsi_eyemodel["EyeCornea_right"];lsi_eyemodel["EyeCornea_left"]],:], dims=1)
 
-	@info norm_chan_locs .- min_chan
-	norm_chan_locs = ((norm_chan_locs .- min_chan) .* (diff_src./diff_chan)) .+ min_src
-	norm_chan_locs[:,3] = norm_chan_locs[:,3] .+ 75
-
-	sel_pos = norm_chan_locs[sel_electrodes,:]
-	f_combinedlocs = WGLMakie.scatter(norm_chan_locs, alpha=0.15, color="blue")
-	WGLMakie.scatter!(norm_src_locs[labelsourceindices["Cornea"],:], alpha=0.4, color="grey")
-	WGLMakie.scatter!(norm_src_locs[labelsourceindices["Retina"],:], alpha=0.4, color="grey")
-	# WGLMakie.scatter!(norm_src_locs[120,:], alpha=0.8, color="pink")
-	WGLMakie.scatter!(sel_pos', alpha=01, color="red")
-	f_combinedlocs
-
+	"finding cornea centers and mean gaze direction"
 end
 
-# ╔═╡ 72db3c45-b560-4d0e-a3e3-4052bf4060c1
-model
+# ╔═╡ c23077be-a053-4e8c-957c-0ea11d037b22
+begin
+	# Find leadfields for individual angles (pure trajectory).
+	function gv_angle_3d(angle_H, angle_V)
+		# angles measured from center gaze position - use complementary angle for θ 
+		return Array{Float32}(CartesianFromSpherical()(Spherical(1, deg2rad(90-angle_H), deg2rad(angle_V))))
+	end
+
+	gaze_angles_pure = collect(-40:40) # set of angle values for pure saccades
+
+	# create 3d angle values for the pure saccades (set azimuth and elevation)
+	gd_horiz = hcat(gaze_angles_pure[:], zeros(length(gaze_angles_pure))) 
+	gd_vert = hcat(zeros(length(gaze_angles_pure)), gaze_angles_pure[:])
+
+	# create gaze direction vectors from 3d angles and hcat to create a matrix (gv_angle_3d.() outputs a vector of vectors)
+	# vector of 1x3 vectors, length = n_gazepoints 
+	gazevectors_horiz = hcat(gv_angle_3d.(gd_horiz[:,1],gd_horiz[:,2]))
+	gazevectors_vert = hcat(gv_angle_3d.(gd_vert[:,1],gd_vert[:,2]))
+	@info "@NOTE defining gaze vectors for pure horizontal and vertical eye movements"
+end
+
+# ╔═╡ b26f09f3-042e-4923-94cc-fb4e4f46cb4a
+begin
+	gazevectors = gazevectors_vert # gazevectors_horiz # 
+	sacc_direction = "vert" # "horiz" # 
+	" @NOTE setting trajectory (selecting the pure-saccade direction -> gazevectors) - please also change 'direction' so that the plot labels change accordingly."
+end
+
+# ╔═╡ 4670be07-e9b5-4933-b316-9ece432d8f9d
+begin
+	# simulate for gazevectors - ensemble method
+
+	# leadfield for centre, to subtract for B-A method
+	lf_center = leadfield_from_gazedir(eyemodel, sim_srcs_idx, gazevec_from_angle(0), 54.0384).*10e3
+
+	# leadfields: matrix of dimensions (electrodes x n_gazepoints) 
+	leadfields = zeros(227,length(gaze_angles_pure))
+	for ix in 1:length(gazevectors) 
+		# for each gazepoint, calculate the leadfield and store it in the corresponding column
+		leadfields[:,ix] = leadfield_from_gazedir(eyemodel, sim_srcs_idx,
+			gazevectors[ix], 54.0384).*10e3
+	end
+
+	# calculate difference from centre gaze
+	lf_ensemble_diff = zeros(size(leadfields))
+	for ix in 1:length(gaze_angles_pure)
+		lf_ensemble_diff[:,ix] = leadfields[:,ix] - lf_center
+	end
+	
+	"@NOTE calculating ensemble leadfields"
+end
+
+# ╔═╡ 5db66bd1-46e5-4b14-9159-b158bf3faae2
+
+	@info vcat(gazevectors[1,:], gazevectors[1,:]), [gazevec_from_angle(0)[:],gazevec_from_angle(0)[:]]
+
+# ╔═╡ 05e14fab-8c76-4aba-ab26-d5d5c21ad88b
+begin
+	function leadfield_specific_sources_orientations(model,idx,equiv_orientations)
+	# take just a selected subset of points in the model, along with a new orientation for those points, and calculate the sum of leadfields of just these points with the given orientation. 
+		equiv_ori_model = model["orientation"]
+		
+		for ii in idx
+			equiv_ori_model[ii,:] = equiv_orientations[:]
+		end
+		
+		mag_eyemodel_equiv = magnitude(eyemodel["leadfield"],equiv_ori_model)
+		mag = sum(mag_eyemodel_equiv[:,ii] for ii in idx)
+		return mag
+	end
+end
+
+# ╔═╡ 24767682-e72a-4fa1-86bd-ae225fd1bca2
+begin
+	# @NOTE: Calculating leadfields via crd placed at centre of eye.
+	@info "crd at center of eye"
+	leadfields_crd = zeros(227,length(gaze_angles_pure))
+	eyecenter_idx = [lsi_eyemodel["EyeCenter_left"][1],lsi_eyemodel["EyeCenter_right"][1]]
+	
+	
+	for ix in 1:length(gaze_angles_pure)
+		# leadfields_crd[:,ix] = (
+		# 	equiv_dipole_mag(deepcopy(eyemodel),eyecenter_idx[1],gazevectors[ix]) + equiv_dipole_mag(deepcopy(eyemodel),eyecenter_idx[2],gazevectors[ix])
+		# ).*10e3
+
+		# @info [gazevectors[ix]; gazevectors[ix]]
+		# calculate leadfield due to 2 individual CRD sources and add
+		leadfields_crd[:,ix] = (
+			leadfield_specific_sources_orientations(deepcopy(eyemodel),eyecenter_idx,gazevectors[ix])
+		).*10e3
+	end
+
+	# calculate difference from centre gaze
+	lf_crd_centregaze = leadfield_specific_sources_orientations(deepcopy(eyemodel),eyecenter_idx,gazevec_from_angle(0)).*10e3
+	lf_crd_diff = zeros(size(leadfields_crd))
+	 for ix in 1:length(gaze_angles_pure) 
+	 	lf_crd_diff[:,ix] = leadfields_crd[:,ix] - lf_crd_centregaze
+	 end
+
+	
+	"@NOTE calculate lf for CRDs placed at eye centres"
+end
+
+# ╔═╡ 2470dcc5-3c43-4308-95e8-cc3ec8e81cb8
+# center gaze to -15 degrees, CRD
+topoplot_leadfields_difference(
+		lf_crd_centregaze, leadfields_crd[:,41-15],
+		pos2dfrom3d(pos3d); labels = ["CRD - position A", "CRD - position B", "CRD Difference plot, 15°","Difference plot with electrode positions"], commoncolorrange=false)
+
+# ╔═╡ 3da5c213-d75a-4c16-9ed8-853503852f97
+# center gaze to -15 degrees, ensemble
+topoplot_leadfields_difference(
+		lf_center, leadfields[:,41-15],
+		pos2dfrom3d(pos3d); labels = ["Ensemble - Position A", "Ensemble - Position B", "Ensemble Difference plot, 15°","Difference plotted with electrodes"], commoncolorrange=false)
+
+# ╔═╡ 27565b1b-50da-49b2-8dba-9cf7d68845f2
+begin
+	@info "@NOTE: defining electrodes of interest"
+	electrode_indices = [7,8, 147, 150, 159, 48, 164]
+	# set_theme!(figure_padding = (10,100,10,10))
+end
+
+# ╔═╡ 4b327df0-64c5-42d8-b4a0-569e187e54ce
+# SP CRD plot seems to be missing FFT10h - it is very similar to FFT9h (index 147,150 respectively)
+	@info mean(leadfields_crd[147,:] - leadfields_crd[150,:])
+
+# ╔═╡ d9add875-4e6a-4e56-bd51-1711cefac056
+# topoplot_series ensemble
+# plot_toposeries_lf(leadfields)
+
+# ╔═╡ 35263c3c-771f-49d5-b49f-847928ad4270
+# topoplot_series crd
+# plot_toposeries_lf(leadfields_crd)
+
+# ╔═╡ 0623c29f-2612-4ee9-8420-2786d9f9dbbb
+begin
+	function plot_toposeries_lf(lf)
+		dat, positions = lf, electrode_pos
+		df = UnfoldMakie.eeg_array_to_dataframe(dat[:, :], string.(1:length(positions)))
+		bin_width = 5
+		f = plot_topoplotseries(
+	    df;
+	    bin_num=15,
+		nrows=5,
+	    positions = positions,
+	    axis = (; xlabel = "Time windows [s]")
+		)
+	end
+end
+
+# ╔═╡ 0d88dd13-9c5f-4561-a651-e2143fa1c7c9
+begin
+	function plot_potentials_lf(lf, xvals, title)
+		fig_sp, ax_sp = series(xvals,lf[electrode_indices,:];labels=hart_small.electrodes["label"][electrode_indices], color=:Set1)
+		ax_sp.title = title # "Standing potential for each angle. \nAngles " * string(minimum(xvals), " to ", maximum(xvals)) * sacc_direction
+		axislegend(ax_sp;
+		position=(1.29,0.5)
+		)
+		fig_sp
+	end
+end
+
+# ╔═╡ 7ad659bf-e772-4310-96d9-a2f380d244cc
+begin
+	@info "@NOTE: plotting s.p. ensemble"
+	fig_results_traj_ensemble = plot_potentials_lf(
+		leadfields, gaze_angles_pure, "Simple Potential: Ensemble"
+	)
+	# save("results_traj_ensemble_vert.svg",fig_results_traj_ensemble)
+end
+
+# ╔═╡ b518df86-2360-4879-b4c3-659965096e46
+begin
+	@info "@NOTE: plotting for CRD at eyecenters"
+	fig_results_traj_crd = plot_potentials_lf(
+		leadfields_crd, gaze_angles_pure, "Simple Potential: CRD"
+	)
+	# save("results_traj_crd_vert.svg",fig_results_traj_crd)
+end
+
+# ╔═╡ 6e1951fe-79fa-4c0f-8cbd-8833cace416a
+begin
+	@info "@NOTE: plotting diff ensemble"
+	fig_results_traj_ensemble_diff = plot_potentials_lf(
+		lf_ensemble_diff, gaze_angles_pure, "Difference Ensemble"
+	)
+	# save("results_traj_ensemble_diff_vert.svg",fig_results_traj_ensemble_diff)
+end
+
+# ╔═╡ 52fe3ffc-5913-42c2-b264-13913836d6f0
+begin
+	@info "@NOTE: plotting diff CRD"
+	fig_results_traj_crd_diff = plot_potentials_lf(
+		lf_crd_diff, gaze_angles_pure, "Difference CRD"
+	)
+	# save("results_traj_crd_diff_vert.svg",fig_results_traj_crd_diff)
+end
+
+# ╔═╡ 08a6e1e4-46b0-4871-858d-1f8051e3328f
+begin
+	# plot into a figure passed in from outside, to get combination plots 
+	function plot_potentials_lf_fig(lf, xvals, title, fig_sp)
+		fig_sp, ax_sp = series(xvals,lf[electrode_indices,:];labels=hart_small.electrodes["label"][electrode_indices], color=:Set1)
+		ax_sp.title = title
+		axislegend(ax_sp;
+		position=(1.29,0.5)
+		)
+		fig_sp
+	end
+end
+
+# ╔═╡ 457c3997-c641-48d9-9dc0-2034ac668fad
+begin
+	# difference wrt CPz (index 48)
+	# d1 = zeros(size(leadfields))
+	# for ix in 1:227
+	# 	d1[ix,:] = leadfields[ix,:] - leadfields[48,:]
+	# end
+	
+	# difference between samples (consecutive angles)
+	# d2 = diff(leadfields,dims=2)
+	# fig_lineplots5, ax5, sp5 = series(gaze_angles_horiz[30:60],d2[electrode_indices,30:60];labels=hart_small.electrodes["label"][electrode_indices], color=:Set1)
+	# # series!(,d1[48,:];labels=["CPz"], color=:Set1)
+	# ax5.title = "Potential difference from prev.sample i.e. angle"
+	# axislegend(ax5; position=(1.29,0.5))
+	# fig_lineplots5
+	# leadfields
+	# d2
+	@info "plotting potential difference from one sample (angle) to the next: just haphazardly went up and down, does not seem to be a good direction to go" 
+end
+
+# ╔═╡ 24cb806a-8e79-44c7-8680-46a0a59254b0
+begin
+	# maximums = maximum(leadfields, dims=1)
+	# minimums = minimum(leadfields, dims=1)
+	# fig_maxmin, ax_maxmin = lines(gaze_angles_pure, maximums[1,:]; label=["max"])
+	# lines!(gaze_angles_pure, minimums[1,:]; label=["min"])
+	# ax_maxmin.title = "Limits of ensemble s.p. measured for the gaze direction. \nAngles " * string(minimum(gaze_angles_pure), " to ", maximum(gaze_angles_pure)) * sacc_direction 
+	# axislegend(ax_maxmin, position=:rc)
+	# fig_maxmin
+end
+
+# ╔═╡ 4251c8ee-16ac-40c5-821e-acb90e9d7b75
+begin
+	# set_theme!()
+	set_theme!(figure_padding = (10,100,10,10)) # for selected electrode plots, the legend overlaps the figure - add padding to accommodate this
+end
+
+# ╔═╡ 01eec740-d9fd-400c-8384-d18cc2a47228
+# ╠═╡ disabled = true
+#=╠═╡
+begin
+	@bind idx_plot NumberField(1:length(gaze_angles_pure))
+end
+  ╠═╡ =#
+
+# ╔═╡ fd0aada2-d83d-423b-b849-df397c10bde2
+# ╠═╡ disabled = true
+#=╠═╡
+@info gaze_angles_pure[idx_plot]
+  ╠═╡ =#
+
+# ╔═╡ d2c528e9-53f0-4e8c-9d66-74a86b0dedd6
+# ╠═╡ disabled = true
+#=╠═╡
+# @info eyecenter_idx[1],gazevectors[1]
+leadfield_specific_sources_orientations(deepcopy(eyemodel),eyecenter_idx[1],gazevectors[1])
+  ╠═╡ =#
+
+# ╔═╡ e74d6606-7329-46b9-97d0-2f038b76b28b
+# ╠═╡ disabled = true
+#=╠═╡
+begin
+ 	# plot eyemodel sources with calculated orientations; centroids; approx. gaze direction. plot average gazedirection from the model between the corneas, plot parameter 'gazedirection_test' at the origin.
+ 	
+ 	fig_eyemodel_orientations = WGLMakie.scatter([0 0 0], alpha=0.025, color="grey")
+ 	
+ 	point3fs_o = [Point3f(p...) for p in eachrow(
+ 		[
+ 			# eyemodel["pos"];
+ 			eye_center_R; # cornea_center_R;
+ 			eye_center_L; # cornea_center_L;
+ 			# [0 10 0];
+ 			# [0 75 0];
+ 			# equiv_dipole_pos;			
+ 		]
+ 	)]
+ 	vectors_o = [Vec3f(o...) for o in eachrow(
+ 		[
+ 			# eyemodel["orientation"];
+ 			gazedir_R;
+ 			gazedir_L;
+ 			# gv_angle_3d(0, 15)'.*10# gazedirection_test.*10;
+ 			# gazedir_model_avg.*10;
+ 			# equiv_dipole_ori.*10;
+ 		]
+ 	)]
+ 	arrows!(point3fs_o, vectors_o.*6, arrowsize=Vec3f(2, 2, 0.6))
+ 
+ 	# plot movement-equivalent dipoles
+ 	# p_o = [Point3f(p...) for p in eachrow(
+ 	# 	[
+ 	# 		equiv_dipole_pos;
+ 	# 	]
+ 	# )]
+ 	# v_o = [Vec3f(o...) for o in eachrow(
+ 	# 	[
+ 	# 		equiv_dipole_ori.*3;
+ 	# 		# hcat(equiv_dipole_ori...)'.*10 # this worked with the old thing
+ 	# 	]
+ 	# )]
+ 	# arrows!(p_o, v_o.*15, arrowsize=Vec3f(2, 2, 0.6); color="red")
+ 
+ 	# for report plot
+ 	WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Cornea"],:], alpha=0.2)
+ 	WGLMakie.scatter!(eyemodel["pos"][lsi_eyemodel["Retina"],:], alpha=0.2)
+ 	
+ 	# WGLMakie.scatter!(eyemodel["pos"][em_sim_idx,:])
+ 	# WGLMakie.scatter!(cornea_center_R)
+ 	# WGLMakie.scatter!(cornea_center_L)
+ 	# red points - centroid considering ALL eye sources
+ 	# WGLMakie.scatter!(eyeall_center_L,color="red")
+ 	# WGLMakie.scatter!(eyeall_center_R,color="red")
+ 	# # pink points - centroid using just retina&cornea sources
+ 	# WGLMakie.scatter!(eye_center_L,color="pink")
+ 	# WGLMakie.scatter!(eye_center_R,color="pink")
+ 
+ 	# # purple points - movement-equivalent dipole source locations
+ 	# WGLMakie.scatter!(Point3f(equiv_dipole_pos[1,:]),color="purple";markersize=25)
+ 	# WGLMakie.scatter!(Point3f(equiv_dipole_pos[2,:]),color="purple";markersize=25)
+ 
+ 	@info gazedir_R, gazedir_L
+ 	
+ 	# WGLMakie.scatter!(,color="red")
+ 	# WGLMakie.scatter!(,color="red")
+ 	fig_eyemodel_orientations
+ end
+  ╠═╡ =#
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 AngleBetweenVectors = "ec570357-d46e-52ed-9726-18773498274d"
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+CoordinateTransformations = "150eb455-5306-5404-9cee-2592286d6298"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
 HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MAT = "23992714-dd62-5051-b70f-ba57cb901cac"
+PlutoLinks = "0ff47ea0-7a50-410d-8455-4348d5de0420"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
@@ -624,16 +529,20 @@ WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
 
 [compat]
 AngleBetweenVectors = "~0.3.0"
+CairoMakie = "~0.13.1"
+CoordinateTransformations = "~0.6.4"
 DataFrames = "~1.7.0"
+FileIO = "~1.16.6"
 HDF5 = "~0.17.2"
 MAT = "~0.10.7"
-PlutoUI = "~0.7.61"
+PlutoLinks = "~0.1.6"
+PlutoUI = "~0.7.14"
 StableRNGs = "~1.0.2"
 Statistics = "~1.11.1"
 TopoPlots = "~0.2.2"
-UnfoldMakie = "~0.5.13"
-UnfoldSim = "~0.3.2"
-WGLMakie = "~0.10.18"
+UnfoldMakie = "~0.5.14"
+UnfoldSim = "~0.4.0"
+WGLMakie = "~0.11.1"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -642,7 +551,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.11.3"
 manifest_format = "2.0"
-project_hash = "dae3806d69cf026d1c343921f198be62eb35b540"
+project_hash = "f5ed25cccade8bdccdb1c3f9c41fe9fe5e9e6a88"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -654,12 +563,6 @@ weakdeps = ["ChainRulesCore", "Test"]
     [deps.AbstractFFTs.extensions]
     AbstractFFTsChainRulesCoreExt = "ChainRulesCore"
     AbstractFFTsTestExt = "Test"
-
-[[deps.AbstractPlutoDingetjes]]
-deps = ["Pkg"]
-git-tree-sha1 = "6e1d2a35f2f90a4bc7c2ed98079b2ba09c35b83a"
-uuid = "6e696c72-6542-2067-7265-42206c756150"
-version = "1.3.2"
 
 [[deps.AbstractTrees]]
 git-tree-sha1 = "2d9c9a55f9c93e8887ad391fbae72f8ef55e1177"
@@ -693,12 +596,13 @@ version = "0.1.41"
 
 [[deps.Adapt]]
 deps = ["LinearAlgebra", "Requires"]
-git-tree-sha1 = "50c3c56a52972d78e8be9fd135bfb91c9574c140"
+git-tree-sha1 = "cd8b948862abee8f3d3e9b73a102a9ca924debb0"
 uuid = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
-version = "4.1.1"
-weakdeps = ["StaticArrays"]
+version = "4.2.0"
+weakdeps = ["SparseArrays", "StaticArrays"]
 
     [deps.Adapt.extensions]
+    AdaptSparseArraysExt = "SparseArrays"
     AdaptStaticArraysExt = "StaticArrays"
 
 [[deps.AdaptivePredicates]]
@@ -708,9 +612,9 @@ version = "1.2.0"
 
 [[deps.AlgebraOfGraphics]]
 deps = ["Accessors", "Colors", "Dates", "Dictionaries", "FileIO", "GLM", "GeoInterface", "GeometryBasics", "GridLayoutBase", "Isoband", "KernelDensity", "Loess", "Makie", "NaturalSort", "PlotUtils", "PolygonOps", "PooledArrays", "PrecompileTools", "RelocatableFolders", "StatsBase", "StructArrays", "Tables"]
-git-tree-sha1 = "ad7d27bb258200fde0f8e9a7df5802dc5cda1d26"
+git-tree-sha1 = "758837f238b4cfa6b95849c44e6b8995e127e8d9"
 uuid = "cbdf2221-f076-402e-a563-3d30da359d67"
-version = "0.8.14"
+version = "0.9.3"
 
 [[deps.AliasTables]]
 deps = ["PtrArrays", "Random"]
@@ -768,9 +672,9 @@ version = "7.18.0"
 
 [[deps.ArrayLayouts]]
 deps = ["FillArrays", "LinearAlgebra"]
-git-tree-sha1 = "2bf6e01f453284cb61c312836b4680331ddfc44b"
+git-tree-sha1 = "4e25216b8fea1908a0ce0f5d87368587899f75be"
 uuid = "4c555306-a7a7-4459-81d9-ec55ddd5c99a"
-version = "1.11.0"
+version = "1.11.1"
 weakdeps = ["SparseArrays"]
 
     [deps.ArrayLayouts.extensions]
@@ -843,9 +747,9 @@ version = "0.3.2"
 
 [[deps.Bonito]]
 deps = ["Base64", "CodecZlib", "Colors", "Dates", "Deno_jll", "HTTP", "Hyperscript", "LinearAlgebra", "Markdown", "MsgPack", "Observables", "RelocatableFolders", "SHA", "Sockets", "Tables", "ThreadPools", "URIs", "UUIDs", "WidgetsBase"]
-git-tree-sha1 = "534820940e4359c09adc615f8bd06ca90d508ba6"
+git-tree-sha1 = "e48e53213512466cebc99c267e275238aaabad6a"
 uuid = "824d6782-a2ef-11e9-3a09-e5662e0c26f8"
-version = "4.0.1"
+version = "4.0.3"
 
 [[deps.BufferedStreams]]
 git-tree-sha1 = "6863c5b7fc997eadcabdbaf6c5f201dc30032643"
@@ -872,6 +776,18 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "e329286945d0cfc04456972ea732551869af1cfc"
 uuid = "4e9b3aee-d8a1-5a3d-ad8b-7d824db253f0"
 version = "1.0.1+0"
+
+[[deps.Cairo]]
+deps = ["Cairo_jll", "Colors", "Glib_jll", "Graphics", "Libdl", "Pango_jll"]
+git-tree-sha1 = "71aa551c5c33f1a4415867fe06b7844faadb0ae9"
+uuid = "159f3aea-2a34-519c-b102-8c37f9878175"
+version = "1.1.1"
+
+[[deps.CairoMakie]]
+deps = ["CRC32c", "Cairo", "Cairo_jll", "Colors", "FileIO", "FreeType", "GeometryBasics", "LinearAlgebra", "Makie", "PrecompileTools"]
+git-tree-sha1 = "6d76f05dbc8b7a52deaa7cdabe901735ae7b6724"
+uuid = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+version = "0.13.1"
 
 [[deps.Cairo_jll]]
 deps = ["Artifacts", "Bzip2_jll", "CompilerSupportLibraries_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "JLLWrappers", "LZO_jll", "Libdl", "Pixman_jll", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Zlib_jll", "libpng_jll"]
@@ -909,9 +825,9 @@ weakdeps = ["SparseArrays"]
     ChainRulesCoreSparseArraysExt = "SparseArrays"
 
 [[deps.ChunkSplitters]]
-git-tree-sha1 = "397b871ff701290cc122cca06af61c5bdf9f5605"
+git-tree-sha1 = "efd065d66c7d683e355a14f32ef1e149dbd37b24"
 uuid = "ae650224-84b6-46f8-82ea-d812ca08434e"
-version = "3.1.0"
+version = "3.1.1"
 
 [[deps.CloughTocher2DInterpolation]]
 deps = ["LinearAlgebra", "MiniQhull", "PrecompileTools", "StaticArrays"]
@@ -933,9 +849,9 @@ version = "0.4.5"
 
 [[deps.CodecZlib]]
 deps = ["TranscodingStreams", "Zlib_jll"]
-git-tree-sha1 = "545a177179195e442472a1c4dc86982aa7a1bef0"
+git-tree-sha1 = "962834c22b66e32aa10f7611c08c8ca4e20749a9"
 uuid = "944b1d66-785c-5afd-91f1-9de20f533193"
-version = "0.7.7"
+version = "0.7.8"
 
 [[deps.CodecZstd]]
 deps = ["TranscodingStreams", "Zstd_jll"]
@@ -951,21 +867,25 @@ version = "0.4.1"
 
 [[deps.ColorSchemes]]
 deps = ["ColorTypes", "ColorVectorSpace", "Colors", "FixedPointNumbers", "PrecompileTools", "Random"]
-git-tree-sha1 = "26ec26c98ae1453c692efded2b17e15125a5bea1"
+git-tree-sha1 = "403f2d8e209681fcbd9468a8514efff3ea08452e"
 uuid = "35d6a980-a343-548e-a6ea-1d62b119f2f4"
-version = "3.28.0"
+version = "3.29.0"
 
 [[deps.ColorTypes]]
 deps = ["FixedPointNumbers", "Random"]
-git-tree-sha1 = "b10d0b65641d57b8b4d5e234446582de5047050d"
+git-tree-sha1 = "c7acce7a7e1078a20a285211dd73cd3941a871d6"
 uuid = "3da002f7-5984-5a60-b8a6-cbb66c0b333f"
-version = "0.11.5"
+version = "0.12.0"
+weakdeps = ["StyledStrings"]
+
+    [deps.ColorTypes.extensions]
+    StyledStringsExt = "StyledStrings"
 
 [[deps.ColorVectorSpace]]
 deps = ["ColorTypes", "FixedPointNumbers", "LinearAlgebra", "Requires", "Statistics", "TensorCore"]
-git-tree-sha1 = "a1f44953f2382ebb937d60dafbe2deea4bd23249"
+git-tree-sha1 = "8b3b6f87ce8f65a2b4f857528fd8d70086cd72b1"
 uuid = "c3611d14-8923-5661-9e6a-0046d554d3a4"
-version = "0.10.0"
+version = "0.11.0"
 weakdeps = ["SpecialFunctions"]
 
     [deps.ColorVectorSpace.extensions]
@@ -1404,10 +1324,10 @@ uuid = "cf35fbd7-0cd7-5166-be24-54bfbe79505f"
 version = "1.4.1"
 
 [[deps.GeometryBasics]]
-deps = ["EarCut_jll", "Extents", "GeoInterface", "IterTools", "LinearAlgebra", "StaticArrays", "StructArrays", "Tables"]
-git-tree-sha1 = "b62f2b2d76cee0d61a2ef2b3118cd2a3215d3134"
+deps = ["EarCut_jll", "Extents", "GeoInterface", "IterTools", "LinearAlgebra", "PrecompileTools", "Random", "StaticArrays"]
+git-tree-sha1 = "3ba0e2818cc2ff79a5989d4dca4bc63120a98bd9"
 uuid = "5c1252a2-5f33-56bf-86c9-59e7332b4326"
-version = "0.4.11"
+version = "0.5.5"
 
 [[deps.Gettext_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "Libiconv_jll", "Pkg", "XML2_jll"]
@@ -1426,6 +1346,12 @@ deps = ["Artifacts", "Gettext_jll", "JLLWrappers", "Libdl", "Libffi_jll", "Libic
 git-tree-sha1 = "b0036b392358c80d2d2124746c2bf3d48d457938"
 uuid = "7746bdde-850d-59dc-9ae8-88ece973131d"
 version = "2.82.4+0"
+
+[[deps.Graphics]]
+deps = ["Colors", "LinearAlgebra", "NaNMath"]
+git-tree-sha1 = "a641238db938fff9b2f60d08ed9030387daf428c"
+uuid = "a2bd30eb-e257-5431-a919-1863eab51364"
+version = "1.1.3"
 
 [[deps.Graphite2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1457,10 +1383,10 @@ version = "0.17.2"
     MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
 
 [[deps.HDF5_jll]]
-deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "LLVMOpenMP_jll", "LazyArtifacts", "LibCURL_jll", "Libdl", "MPICH_jll", "MPIPreferences", "MPItrampoline_jll", "MicrosoftMPI_jll", "OpenMPI_jll", "OpenSSL_jll", "TOML", "Zlib_jll", "libaec_jll"]
-git-tree-sha1 = "38c8874692d48d5440d5752d6c74b0c6b0b60739"
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "LazyArtifacts", "LibCURL_jll", "Libdl", "MPICH_jll", "MPIPreferences", "MPItrampoline_jll", "MicrosoftMPI_jll", "OpenMPI_jll", "OpenSSL_jll", "TOML", "Zlib_jll", "libaec_jll"]
+git-tree-sha1 = "87bd95f99219dc3b86d4ee11a9a7bfa6075000a9"
 uuid = "0234f1f7-429e-5d53-9886-15a909be8d59"
-version = "1.14.2+1"
+version = "1.14.5+0"
 
 [[deps.HTTP]]
 deps = ["Base64", "CodecZlib", "ConcurrentUtilities", "Dates", "ExceptionUnwrapping", "Logging", "LoggingExtras", "MbedTLS", "NetworkOptions", "OpenSSL", "PrecompileTools", "Random", "SimpleBufferStream", "Sockets", "URIs", "UUIDs"]
@@ -1482,9 +1408,9 @@ version = "0.5.3"
 
 [[deps.Hwloc_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "50aedf345a709ab75872f80a2779568dc0bb461b"
+git-tree-sha1 = "f93a9ce66cd89c9ba7a4695a47fd93b4c6bc59fa"
 uuid = "e33a78d0-f292-5ffc-b300-72abe9b543c8"
-version = "2.11.2+3"
+version = "2.12.0+0"
 
 [[deps.HypergeometricFunctions]]
 deps = ["LinearAlgebra", "OpenLibm_jll", "SpecialFunctions"]
@@ -1579,9 +1505,9 @@ uuid = "d25df0c9-e2be-5dd7-82c8-3ad0b3e990b9"
 version = "0.1.5"
 
 [[deps.InlineStrings]]
-git-tree-sha1 = "45521d31238e87ee9f9732561bfee12d4eebd52d"
+git-tree-sha1 = "6a9fde685a7ac1eb3495f8e812c5a7c3711c2d5e"
 uuid = "842dd82b-1e85-43dc-bf29-5d0ee9dffc48"
-version = "1.4.2"
+version = "1.4.3"
 weakdeps = ["ArrowTypes", "Parsers"]
 
     [deps.InlineStrings.extensions]
@@ -1611,9 +1537,9 @@ weakdeps = ["Unitful"]
 
 [[deps.IntervalArithmetic]]
 deps = ["CRlibm_jll", "LinearAlgebra", "MacroTools", "RoundingEmulator"]
-git-tree-sha1 = "eb6ca9aef11db0c08b7ac0a5952c6c6ba6fbebf0"
+git-tree-sha1 = "0fcf2079f918f68c6412cab5f2679822cbd7357f"
 uuid = "d1acc4aa-44c8-5952-acd4-ba5d80a2a253"
-version = "0.22.22"
+version = "0.22.23"
 weakdeps = ["DiffRules", "ForwardDiff", "IntervalSets", "RecipesBase"]
 
     [deps.IntervalArithmetic.extensions]
@@ -1714,6 +1640,12 @@ deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "eac1206917768cb54957c65a615460d87b455fc1"
 uuid = "aacddb02-875f-59d6-b918-886e6ef4fbf8"
 version = "3.1.1+0"
+
+[[deps.JuliaInterpreter]]
+deps = ["CodeTracking", "InteractiveUtils", "Random", "UUIDs"]
+git-tree-sha1 = "4bf4b400a8234cff0f177da4a160a90296159ce9"
+uuid = "aa1ae85d-cabe-5617-a682-6adf51b2e16a"
+version = "0.9.41"
 
 [[deps.KernelDensity]]
 deps = ["Distributions", "DocStringExtensions", "FFTW", "Interpolations", "StatsBase"]
@@ -1880,6 +1812,12 @@ git-tree-sha1 = "f02b56007b064fbfddb4c9cd60161b6dd0f40df3"
 uuid = "e6f89c97-d47a-5376-807f-9c37f3926c36"
 version = "1.1.0"
 
+[[deps.LoweredCodeUtils]]
+deps = ["JuliaInterpreter"]
+git-tree-sha1 = "688d6d9e098109051ae33d126fcfc88c4ce4a021"
+uuid = "6f1432cf-f94c-5a45-995e-cdbf5db27b0b"
+version = "3.1.0"
+
 [[deps.Lz4_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "191686b1ac1ea9c89fc52e996ad15d1d241d1e33"
@@ -1891,11 +1829,6 @@ deps = ["BufferedStreams", "CodecZlib", "HDF5", "SparseArrays"]
 git-tree-sha1 = "1d2dd9b186742b0f317f2530ddcbf00eebb18e96"
 uuid = "23992714-dd62-5051-b70f-ba57cb901cac"
 version = "0.10.7"
-
-[[deps.MIMEs]]
-git-tree-sha1 = "1833212fd6f580c20d4291da9c1b4e8a655b128e"
-uuid = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
-version = "1.0.0"
 
 [[deps.MKL_jll]]
 deps = ["Artifacts", "IntelOpenMP_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "oneTBB_jll"]
@@ -1911,9 +1844,9 @@ version = "0.9.2"
 
 [[deps.MPICH_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Hwloc_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "MPIPreferences", "TOML"]
-git-tree-sha1 = "7715e65c47ba3941c502bffb7f266a41a7f54423"
+git-tree-sha1 = "e7159031670cee777cc2840aef7a521c3603e36c"
 uuid = "7cb0a576-ebde-5e09-9194-50597f1243b4"
-version = "4.2.3+0"
+version = "4.3.0+0"
 
 [[deps.MPIPreferences]]
 deps = ["Libdl", "Preferences"]
@@ -1923,9 +1856,9 @@ version = "0.1.11"
 
 [[deps.MPItrampoline_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "MPIPreferences", "TOML"]
-git-tree-sha1 = "70e830dab5d0775183c99fc75e4c24c614ed7142"
+git-tree-sha1 = "97aac4a518b6f01851f8821272780e1ba56fe90d"
 uuid = "f1f71cc9-e9ae-5b93-9b94-4fe0e1ad3748"
-version = "5.5.1+2"
+version = "5.5.2+0"
 
 [[deps.MacroTools]]
 git-tree-sha1 = "72aebe0b5051e5143a079a4685a46da330a40472"
@@ -1933,16 +1866,16 @@ uuid = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 version = "0.5.15"
 
 [[deps.Makie]]
-deps = ["Animations", "Base64", "CRC32c", "ColorBrewer", "ColorSchemes", "ColorTypes", "Colors", "Contour", "Dates", "DelaunayTriangulation", "Distributions", "DocStringExtensions", "Downloads", "FFMPEG_jll", "FileIO", "FilePaths", "FixedPointNumbers", "Format", "FreeType", "FreeTypeAbstraction", "GeometryBasics", "GridLayoutBase", "ImageBase", "ImageIO", "InteractiveUtils", "Interpolations", "IntervalSets", "InverseFunctions", "Isoband", "KernelDensity", "LaTeXStrings", "LinearAlgebra", "MacroTools", "MakieCore", "Markdown", "MathTeXEngine", "Observables", "OffsetArrays", "Packing", "PlotUtils", "PolygonOps", "PrecompileTools", "Printf", "REPL", "Random", "RelocatableFolders", "Scratch", "ShaderAbstractions", "Showoff", "SignedDistanceFields", "SparseArrays", "Statistics", "StatsBase", "StatsFuns", "StructArrays", "TriplotBase", "UnicodeFun", "Unitful"]
-git-tree-sha1 = "be3051d08b78206fb5e688e8d70c9e84d0264117"
+deps = ["Animations", "Base64", "CRC32c", "ColorBrewer", "ColorSchemes", "ColorTypes", "Colors", "Contour", "Dates", "DelaunayTriangulation", "Distributions", "DocStringExtensions", "Downloads", "FFMPEG_jll", "FileIO", "FilePaths", "FixedPointNumbers", "Format", "FreeType", "FreeTypeAbstraction", "GeometryBasics", "GridLayoutBase", "ImageBase", "ImageIO", "InteractiveUtils", "Interpolations", "IntervalSets", "InverseFunctions", "Isoband", "KernelDensity", "LaTeXStrings", "LinearAlgebra", "MacroTools", "MakieCore", "Markdown", "MathTeXEngine", "Observables", "OffsetArrays", "PNGFiles", "Packing", "PlotUtils", "PolygonOps", "PrecompileTools", "Printf", "REPL", "Random", "RelocatableFolders", "Scratch", "ShaderAbstractions", "Showoff", "SignedDistanceFields", "SparseArrays", "Statistics", "StatsBase", "StatsFuns", "StructArrays", "TriplotBase", "UnicodeFun", "Unitful"]
+git-tree-sha1 = "9680336a5b67f9f9f6eaa018f426043a8cd68200"
 uuid = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
-version = "0.21.18"
+version = "0.22.1"
 
 [[deps.MakieCore]]
 deps = ["ColorTypes", "GeometryBasics", "IntervalSets", "Observables"]
-git-tree-sha1 = "9019b391d7d086e841cbeadc13511224bd029ab3"
+git-tree-sha1 = "c731269d5a2c85ffdc689127a9ba6d73e978a4b1"
 uuid = "20f20a25-4f0e-4fdf-b5d1-57303727442b"
-version = "0.8.12"
+version = "0.9.0"
 
 [[deps.MakieThemes]]
 deps = ["Colors", "Makie", "Random"]
@@ -2157,9 +2090,9 @@ version = "0.8.1+2"
 
 [[deps.OpenMPI_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Hwloc_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "MPIPreferences", "TOML", "Zlib_jll"]
-git-tree-sha1 = "2dace87e14256edb1dd0724ab7ba831c779b96bd"
+git-tree-sha1 = "6c1cf6181ffe0aa33eb33250ca2a60e54a15ea66"
 uuid = "fe0851c0-eecd-5654-98d4-656369965a5c"
-version = "5.0.6+0"
+version = "5.0.7+0"
 
 [[deps.OpenSSL]]
 deps = ["BitFlags", "Dates", "MozillaCACerts_jll", "OpenSSL_jll", "Sockets"]
@@ -2169,9 +2102,9 @@ version = "1.4.3"
 
 [[deps.OpenSSL_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "7493f61f55a6cce7325f197443aa80d32554ba10"
+git-tree-sha1 = "a9697f1d06cc3eb3fb3ad49cc67f2cfabaac31ea"
 uuid = "458c3c95-2e84-50aa-8efc-19380b2a3a95"
-version = "3.0.15+3"
+version = "3.0.16+0"
 
 [[deps.OpenSpecFun_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl"]
@@ -2215,9 +2148,9 @@ version = "0.11.32"
 
 [[deps.PNGFiles]]
 deps = ["Base64", "CEnum", "ImageCore", "IndirectArrays", "OffsetArrays", "libpng_jll"]
-git-tree-sha1 = "67186a2bc9a90f9f85ff3cc8277868961fb57cbd"
+git-tree-sha1 = "cf181f0b1e6a18dfeb0ee8acc4a9d1672499626c"
 uuid = "f57f5aa1-a3ce-4bc8-8ab9-96f992907883"
-version = "0.4.3"
+version = "0.4.4"
 
 [[deps.Packing]]
 deps = ["GeometryBasics"]
@@ -2230,6 +2163,12 @@ deps = ["OffsetArrays"]
 git-tree-sha1 = "0fac6313486baae819364c52b4f483450a9d793f"
 uuid = "5432bcbf-9aad-5242-b902-cca2824c8663"
 version = "0.5.12"
+
+[[deps.Pango_jll]]
+deps = ["Artifacts", "Cairo_jll", "Fontconfig_jll", "FreeType2_jll", "FriBidi_jll", "Glib_jll", "HarfBuzz_jll", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "3b31172c032a1def20c98dae3f2cdc9d10e3b561"
+uuid = "36c8627f-9965-5494-a995-c6b170f724f3"
+version = "1.56.1+0"
 
 [[deps.Parameters]]
 deps = ["OrderedCollections", "UnPack"]
@@ -2276,11 +2215,23 @@ git-tree-sha1 = "3ca9a356cd2e113c420f2c13bea19f8d3fb1cb18"
 uuid = "995b91a9-d308-5afd-9ec6-746e21dbc043"
 version = "1.4.3"
 
+[[deps.PlutoHooks]]
+deps = ["InteractiveUtils", "Markdown", "UUIDs"]
+git-tree-sha1 = "072cdf20c9b0507fdd977d7d246d90030609674b"
+uuid = "0ff47ea0-7a50-410d-8455-4348d5de0774"
+version = "0.0.5"
+
+[[deps.PlutoLinks]]
+deps = ["FileWatching", "InteractiveUtils", "Markdown", "PlutoHooks", "Revise", "UUIDs"]
+git-tree-sha1 = "8f5fa7056e6dcfb23ac5211de38e6c03f6367794"
+uuid = "0ff47ea0-7a50-410d-8455-4348d5de0420"
+version = "0.1.6"
+
 [[deps.PlutoUI]]
-deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "FixedPointNumbers", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "MIMEs", "Markdown", "Random", "Reexport", "URIs", "UUIDs"]
-git-tree-sha1 = "7e71a55b87222942f0f9337be62e26b1f103d3e4"
+deps = ["Base64", "Dates", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "Markdown", "Random", "Reexport", "UUIDs"]
+git-tree-sha1 = "d1fb76655a95bf6ea4348d7197b22e889a4375f4"
 uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
-version = "0.7.61"
+version = "0.7.14"
 
 [[deps.PolygonOps]]
 git-tree-sha1 = "77b3d3605fc1cd0b42d95eba87dfcd2bf67d5ff6"
@@ -2289,9 +2240,9 @@ version = "0.1.2"
 
 [[deps.Polynomials]]
 deps = ["LinearAlgebra", "OrderedCollections", "RecipesBase", "Requires", "Setfield", "SparseArrays"]
-git-tree-sha1 = "7d1d27896cadf629b9a8f0c2541cca215b958dc0"
+git-tree-sha1 = "0973615c3239b1b0d173b77befdada6deb5aa9d8"
 uuid = "f27b6e38-b328-58d1-80ce-0feddd5e7a45"
-version = "4.0.15"
+version = "4.0.17"
 
     [deps.Polynomials.extensions]
     PolynomialsChainRulesCoreExt = "ChainRulesCore"
@@ -2447,6 +2398,16 @@ git-tree-sha1 = "838a3a4188e2ded87a4f9f184b4b0d78a1e91cb7"
 uuid = "ae029012-a4dd-5104-9daa-d747884805df"
 version = "1.3.0"
 
+[[deps.Revise]]
+deps = ["CodeTracking", "FileWatching", "JuliaInterpreter", "LibGit2", "LoweredCodeUtils", "OrderedCollections", "REPL", "Requires", "UUIDs", "Unicode"]
+git-tree-sha1 = "9bb80533cb9769933954ea4ffbecb3025a783198"
+uuid = "295af30f-e4ad-537b-8983-00126c2a3abe"
+version = "3.7.2"
+weakdeps = ["Distributed"]
+
+    [deps.Revise.extensions]
+    DistributedExt = "Distributed"
+
 [[deps.Rmath]]
 deps = ["Random", "Rmath_jll"]
 git-tree-sha1 = "852bd0f55565a9e973fcfee83a84413270224dc4"
@@ -2513,10 +2474,10 @@ uuid = "efcf1570-3423-57d1-acb7-fd33fddbac46"
 version = "1.1.1"
 
 [[deps.ShaderAbstractions]]
-deps = ["ColorTypes", "FixedPointNumbers", "GeometryBasics", "LinearAlgebra", "Observables", "StaticArrays", "StructArrays", "Tables"]
-git-tree-sha1 = "79123bc60c5507f035e6d1d9e563bb2971954ec8"
+deps = ["ColorTypes", "FixedPointNumbers", "GeometryBasics", "LinearAlgebra", "Observables", "StaticArrays"]
+git-tree-sha1 = "818554664a2e01fc3784becb2eb3a82326a604b6"
 uuid = "65257c39-d410-5151-9873-9b3e5be5013e"
-version = "0.4.1"
+version = "0.5.0"
 
 [[deps.SharedArrays]]
 deps = ["Distributed", "Mmap", "Random", "Serialization"]
@@ -2631,9 +2592,9 @@ weakdeps = ["OffsetArrays", "StaticArrays"]
 
 [[deps.StaticArrays]]
 deps = ["LinearAlgebra", "PrecompileTools", "Random", "StaticArraysCore"]
-git-tree-sha1 = "02c8bd479d26dbeff8a7eb1d77edfc10dacabc01"
+git-tree-sha1 = "e3be13f448a43610f978d29b7adf78c76022467a"
 uuid = "90137ffa-7385-5640-81b9-e52037218182"
-version = "1.9.11"
+version = "1.9.12"
 weakdeps = ["ChainRulesCore", "Statistics"]
 
     [deps.StaticArrays.extensions]
@@ -2686,9 +2647,9 @@ version = "0.7.4"
 
 [[deps.StringManipulation]]
 deps = ["PrecompileTools"]
-git-tree-sha1 = "a6b1675a536c5ad1a60e5a5153e1fee12eb146e3"
+git-tree-sha1 = "725421ae8e530ec29bcbdddbe91ff8053421d023"
 uuid = "892a3eda-7b42-436c-8928-eab12a02cf0e"
-version = "0.4.0"
+version = "0.4.1"
 
 [[deps.StringViews]]
 git-tree-sha1 = "ec4bf39f7d25db401bcab2f11d2929798c0578e5"
@@ -2697,9 +2658,9 @@ version = "1.3.4"
 
 [[deps.StructArrays]]
 deps = ["ConstructionBase", "DataAPI", "Tables"]
-git-tree-sha1 = "9537ef82c42cdd8c5d443cbc359110cbb36bae10"
+git-tree-sha1 = "5a3a31c41e15a1e042d60f2f4942adccba05d3c9"
 uuid = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
-version = "0.6.21"
+version = "0.7.0"
 
     [deps.StructArrays.extensions]
     StructArraysAdaptExt = "Adapt"
@@ -2742,9 +2703,9 @@ version = "1.0.3"
 
 [[deps.TZJData]]
 deps = ["Artifacts"]
-git-tree-sha1 = "006a327222dda856e2304959e566ff0104ac8594"
+git-tree-sha1 = "7def47e953a91cdcebd08fbe76d69d2715499a7d"
 uuid = "dc5dba14-91b3-4cab-a142-028a31da12f7"
-version = "1.3.1+2024b"
+version = "1.4.0+2025a"
 
 [[deps.TableTraits]]
 deps = ["IteratorInterfaceExtensions"]
@@ -2800,9 +2761,9 @@ version = "0.5.0"
 
 [[deps.TimeZones]]
 deps = ["Artifacts", "Dates", "Downloads", "InlineStrings", "Mocking", "Printf", "Scratch", "TZJData", "Unicode", "p7zip_jll"]
-git-tree-sha1 = "34600f9822325409bad17639ac087a382ab586b7"
+git-tree-sha1 = "38bb1023fb94bfbaf2a29e1e0de4bbba6fe0bf6d"
 uuid = "f269a46b-ccf7-5d73-abea-4c690281aa53"
-version = "1.21.1"
+version = "1.21.2"
 weakdeps = ["RecipesBase"]
 
     [deps.TimeZones.extensions]
@@ -2810,9 +2771,15 @@ weakdeps = ["RecipesBase"]
 
 [[deps.TimerOutputs]]
 deps = ["ExprTools", "Printf"]
-git-tree-sha1 = "d7298ebdfa1654583468a487e8e83fae9d72dac3"
+git-tree-sha1 = "3832505b94c1868baea47764127e6d36b5c9f29e"
 uuid = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
-version = "0.5.26"
+version = "0.5.27"
+
+    [deps.TimerOutputs.extensions]
+    FlameGraphsExt = "FlameGraphs"
+
+    [deps.TimerOutputs.weakdeps]
+    FlameGraphs = "08572546-2f56-4bcf-ba4e-bab62c3a3f89"
 
 [[deps.ToeplitzMatrices]]
 deps = ["AbstractFFTs", "DSP", "FillArrays", "LinearAlgebra"]
@@ -2886,9 +2853,9 @@ version = "0.8.1"
 
 [[deps.UnfoldMakie]]
 deps = ["AlgebraOfGraphics", "BSplineKit", "CategoricalArrays", "ColorSchemes", "ColorTypes", "Colors", "CoordinateTransformations", "DataFrames", "DataStructures", "DocStringExtensions", "GeometryBasics", "GridLayoutBase", "ImageFiltering", "Interpolations", "LinearAlgebra", "Makie", "MakieThemes", "SparseArrays", "StaticArrays", "Statistics", "TopoPlots", "Unfold"]
-git-tree-sha1 = "abae7c58240891c44c090ac5b02acc0a6ae126b7"
+git-tree-sha1 = "54dd5c7fac59a26ede230932782073ce051584ce"
 uuid = "69a5ce3b-64fb-4f22-ae69-36dd4416af2a"
-version = "0.5.13"
+version = "0.5.14"
 
     [deps.UnfoldMakie.extensions]
     UnfoldMakiePyMNEExt = "PyMNE"
@@ -2898,9 +2865,9 @@ version = "0.5.13"
 
 [[deps.UnfoldSim]]
 deps = ["Artifacts", "DSP", "DataFrames", "Distributions", "FileIO", "HDF5", "ImageFiltering", "LinearAlgebra", "MixedModels", "MixedModelsSim", "Parameters", "Random", "SignalAnalysis", "Statistics", "StatsModels", "ToeplitzMatrices"]
-git-tree-sha1 = "28b31c77e4b2267a51d1bfe95055127dbda01aa8"
+git-tree-sha1 = "fad3691163bdae25b68a47ab6a746576a9458646"
 uuid = "ed8ae6d2-84d3-44c6-ab46-0baf21700804"
-version = "0.3.2"
+version = "0.4.0"
 
 [[deps.Unicode]]
 uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
@@ -2931,9 +2898,9 @@ version = "1.2.0"
 
 [[deps.WGLMakie]]
 deps = ["Bonito", "Colors", "FileIO", "FreeTypeAbstraction", "GeometryBasics", "Hyperscript", "LinearAlgebra", "Makie", "Observables", "PNGFiles", "PrecompileTools", "RelocatableFolders", "ShaderAbstractions", "StaticArrays"]
-git-tree-sha1 = "676bd14390033825be847e138108a1c53701407d"
+git-tree-sha1 = "d76bbe29bdac0dc4096e3838c044ed079bb8682b"
 uuid = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
-version = "0.10.18"
+version = "0.11.1"
 
 [[deps.WebP]]
 deps = ["CEnum", "ColorTypes", "FileIO", "FixedPointNumbers", "ImageCore", "libwebp_jll"]
@@ -3096,9 +3063,9 @@ version = "1.59.0+0"
 
 [[deps.oneTBB_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "7d0ea0f4895ef2f5cb83645fa689e52cb55cf493"
+git-tree-sha1 = "d5a767a3bb77135a99e433afe0eb14cd7f6914c3"
 uuid = "1317d2d5-d96f-522e-a858-c73665f53c3e"
-version = "2021.12.0+0"
+version = "2022.0.0+0"
 
 [[deps.p7zip_jll]]
 deps = ["Artifacts", "Libdl"]
@@ -3119,53 +3086,48 @@ version = "3.6.0+0"
 """
 
 # ╔═╡ Cell order:
-# ╠═58cfd854-4f0c-11ee-33d6-71433b23db47
-# ╠═535a3124-0658-4e3b-8245-3c023c0e5f1d
-# ╟─398cf988-b75d-45b4-b8c8-6bb2342682d0
-# ╟─850b1a81-c1fd-463a-abc9-e7484ef8555c
-# ╟─275c91de-8790-4a44-937b-a55a770dd9ee
-# ╠═2fde0e5e-7543-4149-bf74-9b65573cc462
-# ╠═09258399-2468-45f8-ba35-b244ffe21373
-# ╠═e69e6c73-a4f1-4efb-8ba7-b9e9e20305e4
-# ╠═5b85e5e3-13c4-4584-982e-044984d37ea0
-# ╠═55d651d4-feea-470f-8640-e542a4620c36
-# ╠═b4bd229e-2f51-4df3-adf2-3d566d4f9374
-# ╠═b6d9426a-1632-4fc7-a8eb-6fde0c60f0cb
-# ╠═3e3d9d93-30ee-48e0-854f-4d55cabd2ce9
-# ╠═e5ef7838-8ac0-4903-9e09-4b2bf8094cbc
-# ╠═0be94a3d-20aa-4a53-aea9-a99f7b57599d
-# ╠═0043e40c-f667-4838-9ef7-d987af94a4d1
-# ╠═37412158-83a3-48b2-9384-17c6886c9ea3
-# ╠═b3573611-eeaa-468a-a320-baa5798e5276
-# ╠═4f9e79fd-7b61-469c-a0a0-815a1a1401dd
-# ╠═c232c5d9-c3ce-40af-b3d0-523bc7baac54
-# ╠═b4fb0ea9-b124-4bb8-aaea-3d16a3201843
-# ╠═36c9c5fa-c2b7-46d9-99fe-f40f1e7db65a
-# ╠═ac82f7aa-1fb2-41dd-9dda-d69122c8bb13
-# ╠═69b399c5-4360-4571-8524-92d1669805cf
-# ╠═41e1688c-8ed0-40ea-a31b-93faff95cf68
-# ╠═bc69d158-ffb3-44eb-a70a-363c0044ff2e
-# ╠═5fefaa42-dad1-4d74-a32b-13d20c8b6cda
-# ╠═0ee5ea4c-5c58-4868-834f-94f7f6fa946d
-# ╠═e244557e-fb96-46b0-970f-13894709ddaa
-# ╠═26b58e7d-42a4-4e44-a902-165a52bf654c
-# ╠═0e05c45d-f81b-4e7e-b2c2-cbfef4b8633c
-# ╠═fefafce9-115c-49c9-9000-9427a5d69658
-# ╠═8e81fcfb-6b1b-4ccc-be47-d01f3a11d47d
-# ╠═76892093-ef45-449f-9c60-62eef4fd091f
-# ╠═294e27bb-627c-46c6-8b6f-c58bc441607e
-# ╠═eb9925ba-bafd-4256-9f0d-1b1061e4460c
-# ╠═ce6a92ee-7f8d-40db-8640-16812d221c39
-# ╠═7cefc189-5d38-4da4-8772-dd26d37e75f8
-# ╠═13a9a336-b29f-4728-9c72-6f0617d54377
-# ╠═67f0e0a2-16ea-4930-bec2-556a3f954bee
-# ╠═41b27ecd-d080-400f-bf47-281e5fca2cca
-# ╠═6d27dc13-6098-4692-a029-2598c97ed700
-# ╠═0430bf2d-8ec4-489f-a0b4-a6c8d6d3071b
-# ╠═fcdc2cf9-ddb5-41ec-a310-9e607375a6a0
-# ╠═00923ca5-edb6-481e-9634-3b552ec7290a
-# ╠═2ef19a57-6de7-4e2c-9568-b85360322df3
-# ╠═800ca02e-f196-426d-b8c1-5a0a036ed428
-# ╠═72db3c45-b560-4d0e-a3e3-4052bf4060c1
+# ╠═3a271e46-e43f-46e0-84bf-32192c9b8fe5
+# ╠═5e6b5bca-bd66-4325-8744-1afe2e83a04f
+# ╠═39e670c1-3b51-4cd3-b801-e31cfb9e1553
+# ╠═9b2734ad-d052-4d16-99c4-ef687257bcfe
+# ╠═f99cff61-c795-4f86-af35-c4f6cb5ab21a
+# ╠═c9125a84-e898-11ef-1440-138458aa6009
+# ╠═c24e4fb9-adc3-474b-bafc-12130490260c
+# ╠═b34dd987-fc86-4c0c-b0fd-ee7f10983734
+# ╠═fa7aaded-fcd1-4049-a611-462115614910
+# ╠═05a80c04-af93-47f3-99db-83c0b5a6b920
+# ╠═3756412a-0715-4ae4-9e32-f46978e60a38
+# ╠═fe8025c9-3f52-401f-bbdb-60d0dffafd2a
+# ╠═13c37f0e-aedb-46be-9e50-9955536041de
+# ╠═28f897bc-1c6d-4c10-888b-c83060c3389b
+# ╟─6eb97701-d8e2-4ef9-b518-1e346246cc53
+# ╟─a3deace1-21a2-4c5a-a68a-84e31360d986
+# ╟─dc315567-4d47-44dc-aea6-4eb500da2d3d
+# ╟─c23077be-a053-4e8c-957c-0ea11d037b22
+# ╠═b26f09f3-042e-4923-94cc-fb4e4f46cb4a
+# ╟─4670be07-e9b5-4933-b316-9ece432d8f9d
+# ╠═5db66bd1-46e5-4b14-9159-b158bf3faae2
+# ╟─24767682-e72a-4fa1-86bd-ae225fd1bca2
+# ╟─05e14fab-8c76-4aba-ab26-d5d5c21ad88b
+# ╠═2470dcc5-3c43-4308-95e8-cc3ec8e81cb8
+# ╠═3da5c213-d75a-4c16-9ed8-853503852f97
+# ╠═27565b1b-50da-49b2-8dba-9cf7d68845f2
+# ╠═7ad659bf-e772-4310-96d9-a2f380d244cc
+# ╠═b518df86-2360-4879-b4c3-659965096e46
+# ╠═4b327df0-64c5-42d8-b4a0-569e187e54ce
+# ╠═6e1951fe-79fa-4c0f-8cbd-8833cace416a
+# ╠═52fe3ffc-5913-42c2-b264-13913836d6f0
+# ╠═d9add875-4e6a-4e56-bd51-1711cefac056
+# ╠═35263c3c-771f-49d5-b49f-847928ad4270
+# ╠═0623c29f-2612-4ee9-8420-2786d9f9dbbb
+# ╠═0d88dd13-9c5f-4561-a651-e2143fa1c7c9
+# ╠═08a6e1e4-46b0-4871-858d-1f8051e3328f
+# ╟─457c3997-c641-48d9-9dc0-2034ac668fad
+# ╟─24cb806a-8e79-44c7-8680-46a0a59254b0
+# ╠═4251c8ee-16ac-40c5-821e-acb90e9d7b75
+# ╟─01eec740-d9fd-400c-8384-d18cc2a47228
+# ╟─fd0aada2-d83d-423b-b849-df397c10bde2
+# ╟─d2c528e9-53f0-4e8c-9d66-74a86b0dedd6
+# ╟─e74d6606-7329-46b9-97d0-2f038b76b28b
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
